@@ -1,8 +1,10 @@
 // File: /api/submit.js
 
 import formidable from 'formidable';
-import fs from 'fs';
+import fs from 'fs/promises';
 import { v2 as cloudinary } from 'cloudinary';
+import path from 'path';
+import os from 'os';
 
 export const config = {
   api: {
@@ -10,6 +12,7 @@ export const config = {
   },
 };
 
+// ⚙️ Configurar Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -20,42 +23,60 @@ export default async function handler(req, res) {
   console.log('[LOG] Endpoint /api/submit foi chamado');
 
   if (req.method !== 'POST') {
-    console.log('[ERRO] Método não permitido');
+    console.warn('[ERRO] Método não permitido');
     return res.status(405).json({ message: 'Método não permitido' });
   }
 
-  const form = formidable({ multiples: false });
+  // ⚙️ Processar formulário com Promessa
+  const parseForm = () =>
+    new Promise((resolve, reject) => {
+      const form = formidable({
+        uploadDir: os.tmpdir(), // usar diretório temporário do sistema
+        keepExtensions: true,
+      });
 
-  form.parse(req, async (err, fields, files) => {
-    if (err) {
-      console.error('[ERRO] Ao processar o formulário:', err);
-      return res.status(500).json({ message: 'Erro ao processar o formulário' });
-    }
+      form.parse(req, (err, fields, files) => {
+        if (err) reject(err);
+        else resolve({ fields, files });
+      });
+    });
 
+  try {
+    const { fields, files } = await parseForm();
     const { titulo, descricao, enderecowallet } = fields;
     const imagem = files.imagem;
 
     console.log('[LOG] Campos recebidos:', { titulo, descricao, enderecowallet });
-    console.log('[LOG] Imagem recebida:', imagem);
+    console.log('[LOG] Info da imagem:', imagem);
 
     if (!titulo || !descricao || !enderecowallet || !imagem) {
-      console.warn('[AVISO] Campos obrigatórios em falta');
       return res.status(400).json({ message: 'Todos os campos são obrigatórios' });
     }
 
-    try {
-      const filePath = imagem.filepath || imagem.path;
+    // ⚙️ Obter caminho absoluto
+    const localFilePath = imagem[0]?.filepath || imagem.filepath || imagem.path;
 
-      const uploadResponse = await cloudinary.uploader.upload(filePath);
-      console.log('[LOG] Upload para Cloudinary bem-sucedido:', uploadResponse.secure_url);
-
-      return res.status(200).json({
-        message: 'Submissão recebida com sucesso!',
-        imageUrl: uploadResponse.secure_url,
-      });
-    } catch (uploadError) {
-      console.error('[ERRO] Ao fazer upload para Cloudinary:', uploadError);
-      return res.status(500).json({ message: 'Erro ao fazer upload da imagem' });
+    if (!localFilePath) {
+      throw new Error('Caminho do ficheiro não encontrado');
     }
-  });
+
+    // 📤 Fazer upload para o Cloudinary
+    const uploadResponse = await cloudinary.uploader.upload(localFilePath, {
+      folder: 'nandart-submissoes',
+      use_filename: true,
+      unique_filename: false,
+      resource_type: 'image',
+    });
+
+    console.log('[LOG] Upload bem-sucedido:', uploadResponse.secure_url);
+
+    // ✅ Sucesso
+    return res.status(200).json({
+      message: 'Submissão recebida com sucesso!',
+      imageUrl: uploadResponse.secure_url,
+    });
+  } catch (error) {
+    console.error('[ERRO] Falha no processamento:', error);
+    return res.status(500).json({ message: 'Erro ao fazer upload da imagem', details: error.message });
+  }
 }
