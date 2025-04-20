@@ -2,10 +2,6 @@
   "name": "nandart-api",
   "version": "1.0.0",
   "type": "module",
-  "main": "api/submit.js",
-  "scripts": {
-    "start": "node api/submit.js"
-  },
   "dependencies": {
     "formidable": "^3.5.0",
     "node-fetch": "^3.3.2"
