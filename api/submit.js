@@ -1,7 +1,7 @@
 // File: /api/submit.js
 
 import formidable from 'formidable';
-import fs from 'fs';
+import { v2 as cloudinary } from 'cloudinary';
 import fetch from 'node-fetch';
 
 export const config = {
@@ -9,6 +9,12 @@ export const config = {
     bodyParser: false,
   },
 };
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -19,7 +25,6 @@ export default async function handler(req, res) {
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
-      console.error('Erro ao processar o formulário:', err);
       return res.status(500).json({ message: 'Erro ao processar o formulário' });
     }
 
@@ -30,8 +35,16 @@ export default async function handler(req, res) {
       return res.status(400).json({ message: 'Todos os campos são obrigatórios' });
     }
 
-    // Apenas o nome da imagem é usado neste exemplo
-    const nomeImagem = imagem.originalFilename || imagem.newFilename || 'imagem.jpg';
+    let urlImagem;
+    try {
+      const upload = await cloudinary.uploader.upload(imagem.filepath, {
+        folder: 'nandart_obras',
+        public_id: imagem.originalFilename.split('.')[0],
+      });
+      urlImagem = upload.secure_url;
+    } catch (uploadErr) {
+      return res.status(500).json({ message: 'Erro ao carregar imagem para o Cloudinary', detalhes: uploadErr.message });
+    }
 
     const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
     const REPO = 'nandart/nandart-submissoes';
@@ -42,32 +55,26 @@ export default async function handler(req, res) {
 ${descricao}
 
 **🏦 Endereço da Wallet:** ${enderecowallet}
-**🖼️ Imagem Submetida:** ${nomeImagem}
+**🖼️ Imagem Submetida:** ![Obra](${urlImagem})
 `;
 
-    try {
-      const response = await fetch(`https://api.github.com/repos/${REPO}/issues`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `token ${GITHUB_TOKEN}`,
-          'Accept': 'application/vnd.github+json',
-        },
-        body: JSON.stringify({
-          title: `Nova Obra: ${titulo}`,
-          body: issueBody,
-        }),
-      });
+    const response = await fetch(`https://api.github.com/repos/${REPO}/issues`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `token ${GITHUB_TOKEN}`,
+        'Accept': 'application/vnd.github+json',
+      },
+      body: JSON.stringify({
+        title: `Nova Obra: ${titulo}`,
+        body: issueBody,
+      }),
+    });
 
-      if (!response.ok) {
-  const errorDetails = await response.text();
-  return res.status(500).json({ message: 'Erro ao criar issue no GitHub', details: errorDetails });
-}
-      res.status(200).json({ message: 'Submissão recebida com sucesso!' });
-
-    } catch (error) {
-      console.error('Erro inesperado:', error);
-      res.status(500).json({ message: 'Erro interno do servidor' });
+    if (!response.ok) {
+      const error = await response.text();
+      return res.status(500).json({ message: 'Erro ao criar issue no GitHub', details: error });
     }
+
+    res.status(200).json({ message: 'Submissão recebida com sucesso!' });
   });
 }
-
