@@ -3,7 +3,7 @@
 import formidable from 'formidable';
 import fs from 'fs';
 import { v2 as cloudinary } from 'cloudinary';
-import fetch from 'node-fetch';
+import { Octokit } from 'octokit';
 
 export const config = {
   api: {
@@ -11,24 +11,27 @@ export const config = {
   },
 };
 
-// ⚙️ Configuração Cloudinary
+// 🌩️ Configuração Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+// 🐙 GitHub
+const octokit = new Octokit({
+  auth: process.env.GITHUB_TOKEN,
+});
+
+const REPO_OWNER = 'Nandart';
+const REPO_NAME = 'nandart-submissoes';
+
 export default async function handler(req, res) {
-  // 🌍 Permissões CORS
   res.setHeader('Access-Control-Allow-Origin', 'https://nandart.github.io');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  // 🔁 Resposta ao preflight
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
+  if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') {
     console.log('[ERRO] Método não permitido');
     return res.status(405).json({ message: 'Método não permitido' });
@@ -42,14 +45,25 @@ export default async function handler(req, res) {
       return res.status(500).json({ message: 'Erro ao processar o formulário' });
     }
 
-    const { titulo, descricao, enderecowallet } = fields;
+    const {
+      titulo,
+      descricao,
+      enderecowallet,
+      nomeartista,
+      estilo,
+      tecnica,
+      ano,
+      dimensoes,
+      materiais,
+      local
+    } = fields;
     const imagem = files.imagem;
 
-    console.log('[LOG] Campos recebidos:', { titulo, descricao, enderecowallet });
+    console.log('[LOG] Campos recebidos:', fields);
     console.log('[LOG] Imagem recebida:', imagem);
 
-    if (!titulo || !descricao || !enderecowallet || !imagem) {
-      return res.status(400).json({ message: 'Todos os campos são obrigatórios' });
+    if (!titulo || !descricao || !enderecowallet || !imagem || !nomeartista || !estilo) {
+      return res.status(400).json({ message: 'Todos os campos obrigatórios devem ser preenchidos' });
     }
 
     try {
@@ -58,8 +72,6 @@ export default async function handler(req, res) {
         imagem?.path ||
         (Array.isArray(imagem) && imagem[0]?.filepath) ||
         (Array.isArray(imagem) && imagem[0]?.path);
-
-      console.log('[DEBUG] Caminho do ficheiro:', filePath);
 
       if (!filePath) {
         return res.status(500).json({ message: 'Erro: Caminho do ficheiro não encontrado' });
@@ -71,37 +83,43 @@ export default async function handler(req, res) {
 
       const imageUrl = uploadResponse.secure_url;
 
-      console.log('[LOG] Upload para Cloudinary bem-sucedido:', imageUrl);
+      // 📝 Criar issue no GitHub
+      const issueTitle = `🖼️ Nova Submissão: "${titulo}" por ${nomeartista}`;
+      const issueBody = `
+## Nova obra submetida à galeria NANdART
 
-      // 🐙 Criar issue no GitHub
-      const githubResponse = await fetch(
-        'https://api.github.com/repos/Nandart/nandart-submissoes/issues',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `token ${process.env.GITHUB_TOKEN}`,
-            Accept: 'application/vnd.github+json',
-          },
-          body: JSON.stringify({
-            title: `🎨 Submissão: ${titulo}`,
-            body: `**Descrição:** ${descricao}\n\n**Wallet:** \`${enderecowallet}\`\n\n![Imagem submetida](${imageUrl})`,
-            labels: ['submissao', 'nova-obra'],
-          }),
-        }
-      );
+**🎨 Título:** ${titulo}  
+**🧑‍🎨 Artista:** ${nomeartista}  
+**📅 Ano:** ${ano || 'Não especificado'}  
+**🖌️ Estilo:** ${estilo}  
+**🧵 Técnica:** ${tecnica || 'Não especificada'}  
+**📐 Dimensões:** ${dimensoes || 'Não especificadas'}  
+**🧱 Materiais:** ${materiais || 'Não especificados'}  
+**🌍 Local de criação:** ${local || 'Não especificado'}  
 
-      if (!githubResponse.ok) {
-        const errorText = await githubResponse.text();
-        console.error('[ERRO] Ao criar issue no GitHub:', errorText);
-      }
+**📝 Descrição:**  
+${descricao}
+
+**👛 Carteira:** \`${enderecowallet}\`  
+**📷 Imagem:**  
+![Obra](${imageUrl})
+      `;
+
+      await octokit.rest.issues.create({
+        owner: REPO_OWNER,
+        repo: REPO_NAME,
+        title: issueTitle,
+        body: issueBody,
+        labels: ['submissão', 'obra', 'pendente de revisão']
+      });
 
       return res.status(200).json({
         message: 'Submissão recebida com sucesso!',
         imageUrl,
       });
     } catch (uploadError) {
-      console.error('[ERRO] Ao fazer upload para Cloudinary:', uploadError);
-      return res.status(500).json({ message: 'Erro ao fazer upload da imagem' });
+      console.error('[ERRO] Ao fazer upload para Cloudinary ou criar issue:', uploadError);
+      return res.status(500).json({ message: 'Erro ao fazer upload da imagem ou registar submissão' });
     }
   });
 }
