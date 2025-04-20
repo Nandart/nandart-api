@@ -3,7 +3,7 @@
 import formidable from 'formidable';
 import fs from 'fs';
 import { v2 as cloudinary } from 'cloudinary';
-import { Octokit } from 'octokit';
+import { Octokit } from '@octokit/rest';
 
 export const config = {
   api: {
@@ -11,7 +11,7 @@ export const config = {
   },
 };
 
-// 🌩️ Configuração Cloudinary
+// 🌩️ Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
@@ -33,7 +33,6 @@ export default async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') {
-    console.log('[ERRO] Método não permitido');
     return res.status(405).json({ message: 'Método não permitido' });
   }
 
@@ -41,7 +40,7 @@ export default async function handler(req, res) {
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
-      console.error('[ERRO] Ao processar o formulário:', err);
+      console.error('[ERRO] Formulário:', err);
       return res.status(500).json({ message: 'Erro ao processar o formulário' });
     }
 
@@ -59,9 +58,6 @@ export default async function handler(req, res) {
     } = fields;
 
     const imagem = files.imagem;
-
-    console.log('[LOG] Campos recebidos:', fields);
-    console.log('[LOG] Imagem recebida:', imagem);
 
     if (!nomeArtista || !titulo || !descricao || !estilo || !tecnica || !ano || !dimensoes || !materiais || !local || !enderecowallet || !imagem) {
       return res.status(400).json({ message: 'Todos os campos obrigatórios devem ser preenchidos' });
@@ -84,19 +80,18 @@ export default async function handler(req, res) {
 
       const imageUrl = uploadResponse.secure_url;
 
-      // 📝 Criar issue no GitHub
       const issueTitle = `🖼️ Nova Submissão: "${titulo}" por ${nomeArtista}`;
       const issueBody = `
 ## Nova obra submetida à galeria NANdART
 
 **🎨 Título:** ${titulo}  
 **🧑‍🎨 Artista:** ${nomeArtista}  
-**📅 Ano:** ${ano || 'Não especificado'}  
+**📅 Ano:** ${ano}  
 **🖌️ Estilo:** ${estilo}  
-**🧵 Técnica:** ${tecnica || 'Não especificada'}  
-**📐 Dimensões:** ${dimensoes || 'Não especificadas'}  
-**🧱 Materiais:** ${materiais || 'Não especificados'}  
-**🌍 Local de criação:** ${local || 'Não especificado'}  
+**🧵 Técnica:** ${tecnica}  
+**📐 Dimensões:** ${dimensoes}  
+**🧱 Materiais:** ${materiais}  
+**🌍 Local:** ${local}  
 
 **📝 Descrição:**  
 ${descricao}
@@ -114,12 +109,9 @@ ${descricao}
         labels: ['submissão', 'obra', 'pendente de revisão']
       });
 
-      return res.status(200).json({
-        message: 'Submissão recebida com sucesso!',
-        imageUrl,
-      });
-    } catch (uploadError) {
-      console.error('[ERRO] Ao fazer upload para Cloudinary ou criar issue:', uploadError);
+      return res.status(200).json({ message: 'Submissão recebida com sucesso!', imageUrl });
+    } catch (error) {
+      console.error('[ERRO] Upload ou criação de issue:', error);
       return res.status(500).json({ message: 'Erro ao fazer upload da imagem ou registar submissão' });
     }
   });
