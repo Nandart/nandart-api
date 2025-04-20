@@ -51,22 +51,32 @@ export default async function handler(req, res) {
       return res.status(400).json({ message: 'Todos os campos são obrigatórios' });
     }
 
-    try {
-      const filePath = imagem.filepath || imagem.path;
+   try {
+  const filePath =
+    imagem?.filepath ||
+    imagem?.path ||
+    (Array.isArray(imagem) && imagem[0]?.filepath) ||
+    (Array.isArray(imagem) && imagem[0]?.path);
 
-      const uploadResponse = await cloudinary.uploader.upload(filePath, {
-        folder: 'nandart-submissoes',
-      });
+  console.log('[DEBUG] Caminho do ficheiro:', filePath);
 
-      console.log('[LOG] Upload para Cloudinary bem-sucedido:', uploadResponse.secure_url);
+  if (!filePath) {
+    return res.status(500).json({ message: 'Erro: Caminho do ficheiro não encontrado' });
+  }
 
-      return res.status(200).json({
-        message: 'Submissão recebida com sucesso!',
-        imageUrl: uploadResponse.secure_url,
-      });
-    } catch (uploadError) {
-      console.error('[ERRO] Ao fazer upload para Cloudinary:', uploadError);
-      return res.status(500).json({ message: 'Erro ao fazer upload da imagem' });
-    }
+  const uploadResponse = await cloudinary.uploader.upload(filePath, {
+    folder: 'nandart-submissoes',
+  });
+
+  console.log('[LOG] Upload para Cloudinary bem-sucedido:', uploadResponse.secure_url);
+
+  return res.status(200).json({
+    message: 'Submissão recebida com sucesso!',
+    imageUrl: uploadResponse.secure_url,
+  });
+} catch (uploadError) {
+  console.error('[ERRO] Ao fazer upload para Cloudinary:', uploadError);
+  return res.status(500).json({ message: 'Erro ao fazer upload da imagem' });
+}
   });
 }
