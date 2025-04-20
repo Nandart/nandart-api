@@ -1,15 +1,13 @@
 // File: /api/aprovar.js
 
 import { Octokit } from 'octokit';
-import fetch from 'node-fetch';
 
-const octokit = new Octokit({
-  auth: process.env.GITHUB_TOKEN,
-});
+const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
-const REPO_OWNER = 'Nandart';
-const REPO_NAME = 'nandart-submissoes';
-const SITE_REPO = 'nandart-site';
+const REPO_OWNER = process.env.REPO_PUBLIC_OWNER;
+const REPO_NAME = process.env.REPO_PUBLIC_NAME;
+const REPO_BRANCH = process.env.REPO_PUBLIC_BRANCH;
+const CONTENT_PATH = process.env.REPO_PUBLIC_CONTENT_PATH;
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -17,70 +15,113 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Método não permitido' });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: 'Método não permitido' });
+  }
 
   const { issueNumber } = req.body;
 
   if (!issueNumber) {
-    return res.status(400).json({ message: 'Número da issue em falta.' });
+    return res.status(400).json({ message: 'Número da issue não fornecido' });
   }
 
   try {
-    // Obter dados da issue
-    const issue = await octokit.rest.issues.get({
+    // 🔍 Obter detalhes da issue
+    const { data: issue } = await octokit.rest.issues.get({
       owner: REPO_OWNER,
       repo: REPO_NAME,
-      issue_number: issueNumber,
+      issue_number: issueNumber
     });
 
-    const body = issue.data.body;
-    const titulo = issue.data.title;
-    const nomeFicheiro = titulo.replace(/[^a-z0-9]/gi, '_').toLowerCase() + '.md';
+    const tituloRaw = issue.title.replace(/^🖼️ Nova Submissão: "/, '').replace(/" por .+$/, '');
+    const filename = `${tituloRaw.toLowerCase().replace(/\s+/g, '-')}.json`;
 
-    // Gerar conteúdo para a obra
-    const content = `---\ntitle: \"${titulo}\"\ndate: \"${new Date().toISOString()}\"\n---\n\n${body}`;
+    const content = {
+      titulo: tituloRaw,
+      artista: extrairCampo(issue.body, '**🧑‍🎨 Artista:**'),
+      ano: extrairCampo(issue.body, '**📅 Ano:**'),
+      estilo: extrairCampo(issue.body, '**🖌️ Estilo:**'),
+      tecnica: extrairCampo(issue.body, '**🧵 Técnica:**'),
+      dimensoes: extrairCampo(issue.body, '**📐 Dimensões:**'),
+      materiais: extrairCampo(issue.body, '**🧱 Materiais:**'),
+      local: extrairCampo(issue.body, '**🌍 Local de criação:**'),
+      descricao: extrairDescricao(issue.body),
+      carteira: extrairCarteira(issue.body),
+      imagem: extrairImagem(issue.body)
+    };
 
-    const encodedContent = Buffer.from(content).toString('base64');
+    const encodedContent = Buffer.from(JSON.stringify(content, null, 2)).toString('base64');
 
-    // Criar branch temporária
-    const mainRef = await octokit.rest.git.getRef({
+    // 🌱 Criar Pull Request com o novo ficheiro JSON da obra
+    const branchName = `add-${filename.replace('.json', '')}`;
+
+    // Criar nova branch
+    const { data: mainRef } = await octokit.rest.git.getRef({
       owner: REPO_OWNER,
-      repo: SITE_REPO,
-      ref: 'heads/main',
+      repo: REPO_NAME,
+      ref: `heads/${REPO_BRANCH}`
     });
-
-    const newBranch = `add-obra-${Date.now()}`;
 
     await octokit.rest.git.createRef({
       owner: REPO_OWNER,
-      repo: SITE_REPO,
-      ref: `refs/heads/${newBranch}`,
-      sha: mainRef.data.object.sha,
+      repo: REPO_NAME,
+      ref: `refs/heads/${branchName}`,
+      sha: mainRef.object.sha
     });
 
-    // Criar novo ficheiro na galeria
+    // Criar novo ficheiro
     await octokit.rest.repos.createOrUpdateFileContents({
       owner: REPO_OWNER,
-      repo: SITE_REPO,
-      path: `obras/${nomeFicheiro}`,
-      message: `Adicionar nova obra: ${titulo}`,
-      content: encodedContent,
-      branch: newBranch,
+      repo: REPO_NAME,
+      branch: branchName,
+      path: `${CONTENT_PATH}/${filename}`,
+      message: `Adicionar nova obra: ${tituloRaw}`,
+      content: encodedContent
     });
 
     // Criar Pull Request
-    const pr = await octokit.rest.pulls.create({
+    await octokit.rest.pulls.create({
       owner: REPO_OWNER,
-      repo: SITE_REPO,
-      title: `🎨 Aprovar obra: ${titulo}`,
-      head: newBranch,
-      base: 'main',
-      body: 'Esta PR adiciona uma nova obra à galeria com base na submissão aprovada.',
+      repo: REPO_NAME,
+      head: branchName,
+      base: REPO_BRANCH,
+      title: `🎉 Aprovação de obra: ${tituloRaw}`,
+      body: `A obra **${tituloRaw}** foi aprovada para publicação na galeria.`
     });
 
-    return res.status(200).json({ message: 'Pull Request criada com sucesso!', prUrl: pr.data.html_url });
-  } catch (error) {
-    console.error('[ERRO] Ao aprovar a obra:', error);
-    return res.status(500).json({ message: 'Erro ao aprovar a obra.' });
+    // Atualizar labels da issue
+    await octokit.rest.issues.update({
+      owner: REPO_OWNER,
+      repo: REPO_NAME,
+      issue_number: issueNumber,
+      labels: ['obra', 'aprovada']
+    });
+
+    return res.status(200).json({ message: 'Obra aprovada com sucesso e Pull Request criado!' });
+
+  } catch (erro) {
+    console.error('[ERRO] Ao aprovar a obra:', erro);
+    return res.status(500).json({ message: 'Erro ao aprovar a obra' });
   }
+}
+
+// 🔎 Funções auxiliares para extrair campos do corpo da issue
+function extrairCampo(corpo, campo) {
+  const match = corpo.match(new RegExp(`${campo}\\s*(.*?)\\s*<br>`));
+  return match ? match[1].trim() : 'Não especificado';
+}
+
+function extrairDescricao(corpo) {
+  const match = corpo.match(/\*\*📝 Descrição:\*\*\s*<br>([\s\S]+?)<br>\*\*/);
+  return match ? match[1].trim() : '';
+}
+
+function extrairCarteira(corpo) {
+  const match = corpo.match(/\*\*👛 Carteira:\*\* `([^`]+)`/);
+  return match ? match[1].trim() : '';
+}
+
+function extrairImagem(corpo) {
+  const match = corpo.match(/!\[Obra]\((.*?)\)/);
+  return match ? match[1] : '';
 }
