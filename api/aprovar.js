@@ -1,6 +1,6 @@
 // File: /api/aprovar.js
 
-import { Octokit } from 'octokit';
+import { Octokit } from "@octokit/core";
 
 const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
