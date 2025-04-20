@@ -3,8 +3,8 @@
 import formidable from 'formidable';
 import fs from 'fs';
 import { v2 as cloudinary } from 'cloudinary';
+import fetch from 'node-fetch';
 
-// ⚙️ Desativa o bodyParser nativo
 export const config = {
   api: {
     bodyParser: false,
@@ -73,44 +73,32 @@ export default async function handler(req, res) {
 
       console.log('[LOG] Upload para Cloudinary bem-sucedido:', imageUrl);
 
-      // 🔗 Criar issue no GitHub
-      const issueTitle = `🖼️ Submissão: ${titulo}`;
-      const issueBody = `
-**🎨 Título:** ${titulo}
-**📝 Descrição:** ${descricao}
-**👛 Wallet:** ${enderecowallet}
-**📸 Imagem:** ${imageUrl}
-`;
-
-      try {
-        const githubResponse = await fetch('https://api.github.com/repos/nandart/nandart-submissoes/issues', {
+      // 🐙 Criar issue no GitHub
+      const githubResponse = await fetch(
+        'https://api.github.com/repos/Nandart/nandart-submissoes/issues',
+        {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${process.env.GITHUB_TOKEN}`,
-            'Accept': 'application/vnd.github+json',
+            Authorization: `token ${process.env.GITHUB_TOKEN}`,
+            Accept: 'application/vnd.github+json',
           },
           body: JSON.stringify({
-            title: issueTitle,
-            body: issueBody,
-            labels: ['submissão']
+            title: `🎨 Submissão: ${titulo}`,
+            body: `**Descrição:** ${descricao}\n\n**Wallet:** \`${enderecowallet}\`\n\n![Imagem submetida](${imageUrl})`,
+            labels: ['submissao', 'nova-obra'],
           }),
-        });
-
-        if (!githubResponse.ok) {
-          const errorText = await githubResponse.text();
-          console.error('[ERRO] A criar issue no GitHub:', errorText);
-        } else {
-          console.log('[LOG] Issue criada no GitHub com sucesso');
         }
-      } catch (githubError) {
-        console.error('[ERRO] Exceção ao criar issue no GitHub:', githubError);
+      );
+
+      if (!githubResponse.ok) {
+        const errorText = await githubResponse.text();
+        console.error('[ERRO] Ao criar issue no GitHub:', errorText);
       }
 
       return res.status(200).json({
         message: 'Submissão recebida com sucesso!',
         imageUrl,
       });
-
     } catch (uploadError) {
       console.error('[ERRO] Ao fazer upload para Cloudinary:', uploadError);
       return res.status(500).json({ message: 'Erro ao fazer upload da imagem' });
