@@ -59,7 +59,13 @@ export default async function handler(req, res) {
 
     const imagem = files.imagem;
 
-    if (!nomeArtista || !titulo || !descricao || !estilo || !tecnica || !ano || !dimensoes || !materiais || !local || !enderecowallet || !imagem) {
+    const camposObrigatorios = [
+      nomeArtista, titulo, descricao, estilo,
+      tecnica, ano, dimensoes, materiais,
+      local, enderecowallet, imagem
+    ];
+
+    if (camposObrigatorios.some((campo) => !campo || campo.length === 0)) {
       return res.status(400).json({ message: 'Todos os campos obrigatórios devem ser preenchidos' });
     }
 
