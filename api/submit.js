@@ -3,7 +3,7 @@
 import formidable from 'formidable';
 import fs from 'fs';
 import { v2 as cloudinary } from 'cloudinary';
-import { Octokit } from 'octokit';
+import { Octokit } from "@octokit/core";
 
 export const config = {
   api: {
