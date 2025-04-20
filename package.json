@@ -1,7 +1,8 @@
 {
+  "type": "module",
   "dependencies": {
     "formidable": "^2.0.1",
     "cloudinary": "^1.32.0",
-    "@octokit/rest": "^20.0.1"
+    "@octokit/rest": "^20.0.0"
   }
 }
