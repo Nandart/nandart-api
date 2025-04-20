@@ -4,6 +4,7 @@ import formidable from 'formidable';
 import fs from 'fs';
 import { v2 as cloudinary } from 'cloudinary';
 
+// ⚙️ Desativa o bodyParser nativo
 export const config = {
   api: {
     bodyParser: false,
@@ -51,32 +52,68 @@ export default async function handler(req, res) {
       return res.status(400).json({ message: 'Todos os campos são obrigatórios' });
     }
 
-   try {
-  const filePath =
-    imagem?.filepath ||
-    imagem?.path ||
-    (Array.isArray(imagem) && imagem[0]?.filepath) ||
-    (Array.isArray(imagem) && imagem[0]?.path);
+    try {
+      const filePath =
+        imagem?.filepath ||
+        imagem?.path ||
+        (Array.isArray(imagem) && imagem[0]?.filepath) ||
+        (Array.isArray(imagem) && imagem[0]?.path);
 
-  console.log('[DEBUG] Caminho do ficheiro:', filePath);
+      console.log('[DEBUG] Caminho do ficheiro:', filePath);
 
-  if (!filePath) {
-    return res.status(500).json({ message: 'Erro: Caminho do ficheiro não encontrado' });
-  }
+      if (!filePath) {
+        return res.status(500).json({ message: 'Erro: Caminho do ficheiro não encontrado' });
+      }
 
-  const uploadResponse = await cloudinary.uploader.upload(filePath, {
-    folder: 'nandart-submissoes',
-  });
+      const uploadResponse = await cloudinary.uploader.upload(filePath, {
+        folder: 'nandart-submissoes',
+      });
 
-  console.log('[LOG] Upload para Cloudinary bem-sucedido:', uploadResponse.secure_url);
+      const imageUrl = uploadResponse.secure_url;
 
-  return res.status(200).json({
-    message: 'Submissão recebida com sucesso!',
-    imageUrl: uploadResponse.secure_url,
-  });
-} catch (uploadError) {
-  console.error('[ERRO] Ao fazer upload para Cloudinary:', uploadError);
-  return res.status(500).json({ message: 'Erro ao fazer upload da imagem' });
-}
+      console.log('[LOG] Upload para Cloudinary bem-sucedido:', imageUrl);
+
+      // 🔗 Criar issue no GitHub
+      const issueTitle = `🖼️ Submissão: ${titulo}`;
+      const issueBody = `
+**🎨 Título:** ${titulo}
+**📝 Descrição:** ${descricao}
+**👛 Wallet:** ${enderecowallet}
+**📸 Imagem:** ${imageUrl}
+`;
+
+      try {
+        const githubResponse = await fetch('https://api.github.com/repos/nandart/nandart-submissoes/issues', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.GITHUB_TOKEN}`,
+            'Accept': 'application/vnd.github+json',
+          },
+          body: JSON.stringify({
+            title: issueTitle,
+            body: issueBody,
+            labels: ['submissão']
+          }),
+        });
+
+        if (!githubResponse.ok) {
+          const errorText = await githubResponse.text();
+          console.error('[ERRO] A criar issue no GitHub:', errorText);
+        } else {
+          console.log('[LOG] Issue criada no GitHub com sucesso');
+        }
+      } catch (githubError) {
+        console.error('[ERRO] Exceção ao criar issue no GitHub:', githubError);
+      }
+
+      return res.status(200).json({
+        message: 'Submissão recebida com sucesso!',
+        imageUrl,
+      });
+
+    } catch (uploadError) {
+      console.error('[ERRO] Ao fazer upload para Cloudinary:', uploadError);
+      return res.status(500).json({ message: 'Erro ao fazer upload da imagem' });
+    }
   });
 }
