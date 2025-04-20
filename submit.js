@@ -13,9 +13,8 @@ export default async function handler(req, res) {
   }
 
   // GitHub API para criar um issue
-  const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-  const REPO = 'teu-utilizador/nandart-submissoes'; // substitui com o teu utilizador e nome do repo
-
+  const GITHUB_TOKEN = 'coloca_aqui_o_teu_token_real';
+const REPO = 'nandart/nandart-submissoes';
   const issueBody = `**Título da Obra:** ${titulo}
 
 **Descrição:**
