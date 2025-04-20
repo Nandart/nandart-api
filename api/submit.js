@@ -3,7 +3,7 @@
 import formidable from 'formidable';
 import fs from 'fs';
 import { v2 as cloudinary } from 'cloudinary';
-import { Octokit } from "@octokit/core";
+import { Octokit } from '@octokit/rest';
 
 export const config = {
   api: {
@@ -33,7 +33,6 @@ export default async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') {
-    console.log('[ERRO] Método não permitido');
     return res.status(405).json({ message: 'Método não permitido' });
   }
 
@@ -49,20 +48,17 @@ export default async function handler(req, res) {
       titulo,
       descricao,
       enderecowallet,
-      nomeartista,
-      estilo,
+      nomeArtista,
+      estiloObra,
       tecnica,
-      ano,
+      anoCriacao,
       dimensoes,
       materiais,
-      local
+      localCriacao
     } = fields;
     const imagem = files.imagem;
 
-    console.log('[LOG] Campos recebidos:', fields);
-    console.log('[LOG] Imagem recebida:', imagem);
-
-    if (!titulo || !descricao || !enderecowallet || !imagem || !nomeartista || !estilo) {
+    if (!titulo || !descricao || !enderecowallet || !imagem || !nomeArtista || !estiloObra) {
       return res.status(400).json({ message: 'Todos os campos obrigatórios devem ser preenchidos' });
     }
 
@@ -83,19 +79,18 @@ export default async function handler(req, res) {
 
       const imageUrl = uploadResponse.secure_url;
 
-      // 📝 Criar issue no GitHub
-      const issueTitle = `🖼️ Nova Submissão: "${titulo}" por ${nomeartista}`;
+      const issueTitle = `🖼️ Submissão: ${titulo}`;
       const issueBody = `
 ## Nova obra submetida à galeria NANdART
 
 **🎨 Título:** ${titulo}  
-**🧑‍🎨 Artista:** ${nomeartista}  
-**📅 Ano:** ${ano || 'Não especificado'}  
-**🖌️ Estilo:** ${estilo}  
+**🧑‍🎨 Artista:** ${nomeArtista}  
+**📅 Ano:** ${anoCriacao || 'Não especificado'}  
+**🖌️ Estilo:** ${estiloObra}  
 **🧵 Técnica:** ${tecnica || 'Não especificada'}  
 **📐 Dimensões:** ${dimensoes || 'Não especificadas'}  
 **🧱 Materiais:** ${materiais || 'Não especificados'}  
-**🌍 Local de criação:** ${local || 'Não especificado'}  
+**🌍 Local de criação:** ${localCriacao || 'Não especificado'}  
 
 **📝 Descrição:**  
 ${descricao}
@@ -103,14 +98,14 @@ ${descricao}
 **👛 Carteira:** \`${enderecowallet}\`  
 **📷 Imagem:**  
 ![Obra](${imageUrl})
-      `;
+`;
 
       await octokit.rest.issues.create({
         owner: REPO_OWNER,
         repo: REPO_NAME,
         title: issueTitle,
         body: issueBody,
-        labels: ['submissão', 'obra', 'pendente de revisão']
+        labels: ['submissão', 'nova-obra', 'pendente de revisão']
       });
 
       return res.status(200).json({
