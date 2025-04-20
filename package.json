@@ -1,10 +1,5 @@
-{
-  "name": "nandart-api",
-  "version": "1.0.0",
-  "type": "module",
-  "dependencies": {
-    "formidable": "^3.5.0",
-    "node-fetch": "^2.6.7",
-    "cloudinary": "^1.37.1"
-  }
+"dependencies": {
+  "formidable": "^2.0.1",
+  "cloudinary": "^1.32.0",
+  "octokit": "^2.0.14"
 }
