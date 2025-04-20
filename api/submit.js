@@ -59,11 +59,9 @@ ${descricao}
       });
 
       if (!response.ok) {
-        const erro = await response.text();
-        console.error('Erro na resposta do GitHub:', erro);
-        return res.status(500).json({ message: 'Erro ao criar issue no GitHub' });
-      }
-
+  const errorDetails = await response.text();
+  return res.status(500).json({ message: 'Erro ao criar issue no GitHub', details: errorDetails });
+}
       res.status(200).json({ message: 'Submissão recebida com sucesso!' });
 
     } catch (error) {
