@@ -7,99 +7,71 @@ const octokit = new Octokit({
   auth: process.env.GITHUB_TOKEN,
 });
 
-const REPO_OWNER = 'Nandart';
-const REPO_NAME = 'nandart-submissoes';
-const BASE_BRANCH = 'main';
+const OWNER = 'Nandart';
+const REPO = 'nandart-galeria-publica';
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Método não permitido' });
-  }
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ message: 'Método não permitido' });
 
   try {
-    const {
-      nomeArtista,
-      titulo,
-      descricao,
-      estilo,
-      tecnica,
-      ano,
-      dimensoes,
-      materiais,
-      local,
-      enderecowallet,
-      imageUrl
-    } = req.body;
+    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
 
-    if (!nomeArtista || !titulo || !descricao || !imageUrl) {
-      return res.status(400).json({ message: 'Campos obrigatórios em falta' });
+    const { nomeArtista, titulo, imageUrl } = body;
+
+    if (!nomeArtista || !titulo || !imageUrl) {
+      return res.status(400).json({ message: 'Dados incompletos para criar PR' });
     }
 
-    const slug = slugify(titulo, { lower: true, strict: true });
-    const fileName = `galeria/obras/${slug}.json`;
+    const timestamp = Date.now();
+    const slug = slugify(`${titulo}-${nomeArtista}-${timestamp}`, { lower: true, strict: true });
+    const filename = `obras/${slug}.json`;
 
-    const conteudoObra = {
-      titulo,
+    const conteudo = {
       artista: nomeArtista,
-      descricao,
-      estilo,
-      tecnica,
-      ano,
-      dimensoes,
-      materiais,
-      local,
+      titulo,
       imagem: imageUrl,
-      carteira: enderecowallet,
-      dataSubmissao: new Date().toISOString()
+      aprovadoEm: new Date().toISOString()
     };
 
-    const jsonContent = JSON.stringify(conteudoObra, null, 2);
+    const contentEncoded = Buffer.from(JSON.stringify(conteudo, null, 2)).toString('base64');
 
-    // 1. Obter o SHA da main
-    const baseRef = await octokit.rest.git.getRef({
-      owner: REPO_OWNER,
-      repo: REPO_NAME,
-      ref: `heads/${BASE_BRANCH}`,
-    });
+    const branchName = `add-obra-${slug}`;
+    const { data: master } = await octokit.repos.getBranch({ owner: OWNER, repo: REPO, branch: 'main' });
 
-    const baseSha = baseRef.data.object.sha;
-    const branchName = `adicionar-obra-${slug}`;
-
-    // 2. Criar nova branch
-    await octokit.rest.git.createRef({
-      owner: REPO_OWNER,
-      repo: REPO_NAME,
+    await octokit.git.createRef({
+      owner: OWNER,
+      repo: REPO,
       ref: `refs/heads/${branchName}`,
-      sha: baseSha,
+      sha: master.commit.sha
     });
 
-    // 3. Adicionar ficheiro JSON à nova branch
-    await octokit.rest.repos.createOrUpdateFileContents({
-      owner: REPO_OWNER,
-      repo: REPO_NAME,
-      path: fileName,
-      message: `Adicionar obra: ${titulo}`,
-      content: Buffer.from(jsonContent).toString('base64'),
-      branch: branchName,
+    await octokit.repos.createOrUpdateFileContents({
+      owner: OWNER,
+      repo: REPO,
+      path: filename,
+      message: `🎨 Nova obra: ${titulo} por ${nomeArtista}`,
+      content: contentEncoded,
+      branch: branchName
     });
 
-    // 4. Criar Pull Request
-    const pr = await octokit.rest.pulls.create({
-      owner: REPO_OWNER,
-      repo: REPO_NAME,
-      title: `✨ Novo PR: Obra "${titulo}"`,
+    const { data: pr } = await octokit.pulls.create({
+      owner: OWNER,
+      repo: REPO,
+      title: `✨ Aprovação da obra "${titulo}"`,
       head: branchName,
-      base: BASE_BRANCH,
-      body: `Obra submetida por ${nomeArtista}. Aguardando aprovação para ser adicionada à galeria.`,
+      base: 'main',
+      body: `Obra aprovada automaticamente pelo painel de curadoria.\n\n🎨 **${titulo}**\n👤 *${nomeArtista}*`
     });
 
-    return res.status(200).json({
-      message: 'Pull Request criado com sucesso!',
-      prUrl: pr.data.html_url,
-    });
+    return res.status(200).json({ message: 'Pull Request criado com sucesso', prUrl: pr.html_url });
 
   } catch (erro) {
     console.error('[ERRO] Ao criar PR automático:', erro);
-    return res.status(500).json({ message: 'Erro ao criar Pull Request automático' });
+    return res.status(500).json({ message: 'Erro ao criar PR automático' });
   }
 }
