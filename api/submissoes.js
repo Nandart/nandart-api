@@ -9,6 +9,18 @@ const octokit = new Octokit({
 const REPO_OWNER = 'Nandart';
 const REPO_NAME = 'nandart-submissoes';
 
+export const config = {
+  api: {
+    bodyParser: false
+  }
+};
+
+function extrairCampo(texto, chave) {
+  const regex = new RegExp(`${chave}:\\s*(.*)`);
+  const match = texto.match(regex);
+  return match ? match[1].trim() : '';
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -24,40 +36,34 @@ export default async function handler(req, res) {
       owner: REPO_OWNER,
       repo: REPO_NAME,
       state: 'open',
-      labels: 'submissão',
+      labels: 'obra',
       per_page: 100
     });
 
-    const pendentes = [];
-
-    for (const issue of issues) {
-      const labels = issue.labels.map((l) => (typeof l === 'string' ? l : l.name));
-      if (!labels.includes('aprovada')) {
+    const pendentes = issues
+      .filter(issue => !issue.labels.some(label => label.name === 'aprovada'))
+      .map(issue => {
         const body = issue.body || '';
-        const tituloMatch = body.match(/\*\*Título:\*\* (.+)/);
-        const artistaMatch = body.match(/\*\*Artista:\*\* (.+)/);
-        const imagemMatch = body.match(/!\[Obra\]\((.+)\)/);
+        const titulo = extrairCampo(body, 'Título');
+        const nomeArtista = extrairCampo(body, 'Artista');
+        const imagemURL = extrairCampo(body, 'Imagem');
 
-        const titulo = tituloMatch ? tituloMatch[1].trim() : 'Sem título';
-        const nomeArtista = artistaMatch ? artistaMatch[1].trim() : 'Desconhecido';
-        const imagem = imagemMatch ? imagemMatch[1].trim() : null;
-
-        pendentes.push({
+        return {
           id: issue.number,
           titulo,
           nomeArtista,
-          imagem,
+          imagem: imagemURL,
           url: issue.html_url
-        });
-      }
-    }
+        };
+      })
+      .filter(obra => obra.titulo && obra.nomeArtista && obra.imagem);
 
-    return res.status(200).json({
+    res.status(200).json({
       total: pendentes.length,
       pendentes
     });
   } catch (erro) {
     console.error('[ERRO] Ao carregar submissões:', erro);
-    return res.status(500).json({ message: 'Erro ao carregar submissões pendentes' });
+    res.status(500).json({ message: 'Erro ao carregar submissões' });
   }
 }
