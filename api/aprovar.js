@@ -30,18 +30,23 @@ export default async function handler(req, res) {
 
   try {
     const slug = slugify(`${nomeArtista}-${titulo}`, { lower: true });
-    const path = `obras/${slug}.md`;
+    const path = `galeria/obras/${slug}.json`;
 
-    const conteudo = `
----
-titulo: "${titulo}"
-artista: "${nomeArtista}"
-imagem: "${imagem}"
-slug: "${slug}"
----
-    `.trim();
+    const conteudo = {
+      titulo,
+      artista: nomeArtista,
+      imagem,
+      slug
+    };
 
-    const fileContentEncoded = Buffer.from(conteudo).toString('base64');
+    const fileContentEncoded = Buffer.from(JSON.stringify(conteudo, null, 2)).toString('base64');
+
+    const { data: repo } = await octokit.rest.repos.get({ owner: REPO_OWNER, repo: REPO_PUBLIC });
+    const baseSha = (await octokit.rest.git.getRef({
+      owner: REPO_OWNER,
+      repo: REPO_PUBLIC,
+      ref: `heads/${BRANCH}`
+    })).data.object.sha;
 
     const branchName = `aprovacao-${id}-${Date.now()}`;
 
@@ -49,17 +54,14 @@ slug: "${slug}"
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
       ref: `refs/heads/${branchName}`,
-      sha: (await octokit.rest.repos.get({
-        owner: REPO_OWNER,
-        repo: REPO_PUBLIC
-      })).data.default_branch
+      sha: baseSha
     });
 
     await octokit.rest.repos.createOrUpdateFileContents({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
       path,
-      message: `🆕 Adicionar obra: ${titulo}`,
+      message: `Adicionar obra: ${titulo}`,
       content: fileContentEncoded,
       branch: branchName
     });
@@ -67,17 +69,17 @@ slug: "${slug}"
     await octokit.rest.pulls.create({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
-      title: `✨ Aprovação de nova obra: ${titulo}`,
+      title: `Aprovar obra: ${titulo}`,
       head: branchName,
       base: BRANCH,
-      body: `Esta obra foi aprovada e está pronta para ser integrada na galeria.`
+      body: `Esta obra foi aprovada e está pronta para a galeria.`
     });
 
     await octokit.rest.issues.update({
       owner: REPO_OWNER,
       repo: REPO_NAME,
       issue_number: id,
-      labels: ['obra', 'aprovada']
+      labels: ['aprovada']
     });
 
     return res.status(200).json({ message: 'Pull Request criado com sucesso!' });
