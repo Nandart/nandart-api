@@ -3,12 +3,6 @@
 import { Octokit } from '@octokit/rest';
 import slugify from 'slugify';
 
-export const config = {
-  api: {
-    bodyParser: true
-  }
-};
-
 const octokit = new Octokit({
   auth: process.env.GITHUB_TOKEN
 });
@@ -16,7 +10,13 @@ const octokit = new Octokit({
 const REPO_OWNER = 'Nandart';
 const REPO_NAME = 'nandart-submissoes';
 const REPO_PUBLIC = 'nandart-galeria';
-const BRANCH = process.env.REPO_PUBLIC_BRANCH || 'main';
+const BRANCH_BASE = process.env.REPO_PUBLIC_BRANCH || 'main';
+
+export const config = {
+  api: {
+    bodyParser: true
+  }
+};
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -31,12 +31,12 @@ export default async function handler(req, res) {
   const { id, titulo, nomeArtista, imagem } = req.body;
 
   if (!id || !titulo || !nomeArtista || !imagem) {
-    return res.status(400).json({ message: 'Dados obrigatórios em falta.' });
+    return res.status(400).json({ message: 'Dados em falta na submissão' });
   }
 
   try {
     const slug = slugify(`${nomeArtista}-${titulo}`, { lower: true, strict: true });
-    const path = `galeria/obras/${slug}.md`;
+    const caminhoFicheiro = `obras/${slug}.md`;
 
     const conteudo = `
 ---
@@ -45,59 +45,64 @@ artista: "${nomeArtista}"
 imagem: "${imagem}"
 slug: "${slug}"
 ---
-`.trim();
+    `.trim();
 
-    const contentEncoded = Buffer.from(conteudo).toString('base64');
+    const conteudoCodificado = Buffer.from(conteudo).toString('base64');
 
-    // Obter o SHA da branch base
-    const ref = await octokit.rest.git.getRef({
+    // Obter SHA do último commit da branch base
+    const baseInfo = await octokit.rest.repos.get({
       owner: REPO_OWNER,
-      repo: REPO_PUBLIC,
-      ref: `heads/${BRANCH}`
+      repo: REPO_PUBLIC
     });
 
-    const baseSha = ref.data.object.sha;
-    const branchName = `aprovacao-${id}-${Date.now()}`;
+    const shaBase = (
+      await octokit.rest.git.getRef({
+        owner: REPO_OWNER,
+        repo: REPO_PUBLIC,
+        ref: `heads/${BRANCH_BASE}`
+      })
+    ).data.object.sha;
 
-    // Criar nova branch a partir da branch base
+    // Criar novo branch para aprovação
+    const nomeBranch = `aprovacao-${id}-${Date.now()}`;
     await octokit.rest.git.createRef({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
-      ref: `refs/heads/${branchName}`,
-      sha: baseSha
+      ref: `refs/heads/${nomeBranch}`,
+      sha: shaBase
     });
 
-    // Criar ficheiro da obra na nova branch
+    // Adicionar ficheiro com os dados da obra
     await octokit.rest.repos.createOrUpdateFileContents({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
-      path,
-      message: `Adicionar obra aprovada: ${titulo}`,
-      content: contentEncoded,
-      branch: branchName
+      path: caminhoFicheiro,
+      message: `🆕 Adicionar obra: ${titulo}`,
+      content: conteudoCodificado,
+      branch: nomeBranch
     });
 
     // Criar Pull Request
     await octokit.rest.pulls.create({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
-      title: `Aprovação de nova obra: ${titulo}`,
-      head: branchName,
-      base: BRANCH,
-      body: `Esta obra foi aprovada e está pronta para integrar a galeria pública.`
+      title: `✨ Aprovação de nova obra: ${titulo}`,
+      head: nomeBranch,
+      base: BRANCH_BASE,
+      body: `A obra "${titulo}" de ${nomeArtista} foi aprovada e aguarda integração na galeria.`
     });
 
-    // Atualizar a issue original
+    // Atualizar estado da submissão original (issue)
     await octokit.rest.issues.update({
       owner: REPO_OWNER,
       repo: REPO_NAME,
-      issue_number: id,
+      issue_number: Number(id),
       labels: ['obra', 'aprovada']
     });
 
     return res.status(200).json({ message: 'Pull Request criado com sucesso!' });
   } catch (erro) {
-    console.error('[ERRO] Ao criar Pull Request:', erro);
-    return res.status(500).json({ message: 'Erro ao criar Pull Request.' });
+    console.error('[ERRO] Ao criar PR automático:', erro);
+    return res.status(500).json({ message: 'Erro ao criar Pull Request' });
   }
 }
