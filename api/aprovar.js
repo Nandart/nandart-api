@@ -30,26 +30,29 @@ export default async function handler(req, res) {
 
   try {
     const slug = slugify(`${nomeArtista}-${titulo}`, { lower: true });
-    const path = `galeria/obras/${slug}.json`;
+    const path = `obras/${slug}.md`;
 
-    const conteudo = {
-      titulo,
-      artista: nomeArtista,
-      imagem,
-      slug
-    };
+    const conteudo = `---
+titulo: "${titulo}"
+artista: "${nomeArtista}"
+imagem: "${imagem}"
+slug: "${slug}"
+---`.trim();
 
-    const fileContentEncoded = Buffer.from(JSON.stringify(conteudo, null, 2)).toString('base64');
-
-    const { data: repo } = await octokit.rest.repos.get({ owner: REPO_OWNER, repo: REPO_PUBLIC });
-    const baseSha = (await octokit.rest.git.getRef({
-      owner: REPO_OWNER,
-      repo: REPO_PUBLIC,
-      ref: `heads/${BRANCH}`
-    })).data.object.sha;
+    const fileContentEncoded = Buffer.from(conteudo).toString('base64');
 
     const branchName = `aprovacao-${id}-${Date.now()}`;
 
+    // Obter SHA do último commit da branch base
+    const { data: baseBranch } = await octokit.rest.repos.getBranch({
+      owner: REPO_OWNER,
+      repo: REPO_PUBLIC,
+      branch: BRANCH
+    });
+
+    const baseSha = baseBranch.commit.sha;
+
+    // Criar nova branch a partir da branch base
     await octokit.rest.git.createRef({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
@@ -57,32 +60,36 @@ export default async function handler(req, res) {
       sha: baseSha
     });
 
+    // Adicionar o ficheiro da obra ao novo branch
     await octokit.rest.repos.createOrUpdateFileContents({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
       path,
-      message: `Adicionar obra: ${titulo}`,
+      message: `🆕 Adicionar obra: ${titulo}`,
       content: fileContentEncoded,
       branch: branchName
     });
 
+    // Criar Pull Request
     await octokit.rest.pulls.create({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
-      title: `Aprovar obra: ${titulo}`,
+      title: `✨ Aprovação de nova obra: ${titulo}`,
       head: branchName,
       base: BRANCH,
-      body: `Esta obra foi aprovada e está pronta para a galeria.`
+      body: `Esta obra foi aprovada e está pronta para ser integrada na galeria.`
     });
 
+    // Atualizar a issue original com rótulo de aprovação
     await octokit.rest.issues.update({
       owner: REPO_OWNER,
       repo: REPO_NAME,
       issue_number: id,
-      labels: ['aprovada']
+      labels: ['obra', 'aprovada']
     });
 
     return res.status(200).json({ message: 'Pull Request criado com sucesso!' });
+
   } catch (erro) {
     console.error('[ERRO] Ao criar PR automático:', erro);
     return res.status(500).json({ message: 'Erro ao criar Pull Request' });
