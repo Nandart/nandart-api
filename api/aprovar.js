@@ -1,68 +1,105 @@
 // File: /api/aprovar.js
 
 import { Octokit } from '@octokit/rest';
+import slugify from 'slugify';
 
-const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+const octokit = new Octokit({
+  auth: process.env.GITHUB_TOKEN,
+});
 
-const REPO_OWNER = process.env.REPO_PUBLIC_OWNER;
-const REPO_NAME = process.env.REPO_PUBLIC_NAME;
-const REPO_BRANCH = process.env.REPO_PUBLIC_BRANCH;
-const CONTENT_PATH = process.env.REPO_PUBLIC_CONTENT_PATH;
+const REPO_OWNER = 'Nandart';
+const REPO_NAME = 'nandart-submissoes';
+const BASE_BRANCH = 'main';
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Método não permitido' });
   }
 
-  const { issueNumber } = req.body;
-
-  if (!issueNumber) {
-    return res.status(400).json({ message: 'Número da issue não fornecido' });
-  }
-
   try {
-    const issue = await octokit.rest.issues.get({
-      owner: REPO_OWNER,
-      repo: REPO_NAME,
-      issue_number: issueNumber
-    });
-
-    const titulo = issue.data.title.replace(/^🖼️ Submissão: /, '');
-    const corpo = issue.data.body;
-
-    const nomeDoFicheiro = `${titulo.toLowerCase().replace(/\s+/g, '-')}.json`;
-    const conteudo = {
+    const {
+      nomeArtista,
       titulo,
-      descricao: corpo,
-      origem: 'Submetido via painel de aprovação'
+      descricao,
+      estilo,
+      tecnica,
+      ano,
+      dimensoes,
+      materiais,
+      local,
+      enderecowallet,
+      imageUrl
+    } = req.body;
+
+    if (!nomeArtista || !titulo || !descricao || !imageUrl) {
+      return res.status(400).json({ message: 'Campos obrigatórios em falta' });
+    }
+
+    const slug = slugify(titulo, { lower: true, strict: true });
+    const fileName = `galeria/obras/${slug}.json`;
+
+    const conteudoObra = {
+      titulo,
+      artista: nomeArtista,
+      descricao,
+      estilo,
+      tecnica,
+      ano,
+      dimensoes,
+      materiais,
+      local,
+      imagem: imageUrl,
+      carteira: enderecowallet,
+      dataSubmissao: new Date().toISOString()
     };
 
-    const contentBase64 = Buffer.from(JSON.stringify(conteudo, null, 2)).toString('base64');
+    const jsonContent = JSON.stringify(conteudoObra, null, 2);
 
+    // 1. Obter o SHA da main
+    const baseRef = await octokit.rest.git.getRef({
+      owner: REPO_OWNER,
+      repo: REPO_NAME,
+      ref: `heads/${BASE_BRANCH}`,
+    });
+
+    const baseSha = baseRef.data.object.sha;
+    const branchName = `adicionar-obra-${slug}`;
+
+    // 2. Criar nova branch
+    await octokit.rest.git.createRef({
+      owner: REPO_OWNER,
+      repo: REPO_NAME,
+      ref: `refs/heads/${branchName}`,
+      sha: baseSha,
+    });
+
+    // 3. Adicionar ficheiro JSON à nova branch
     await octokit.rest.repos.createOrUpdateFileContents({
       owner: REPO_OWNER,
       repo: REPO_NAME,
-      path: `${CONTENT_PATH}/${nomeDoFicheiro}`,
-      message: `🎉 Aprovação de obra: ${titulo}`,
-      content: contentBase64,
-      branch: REPO_BRANCH
+      path: fileName,
+      message: `Adicionar obra: ${titulo}`,
+      content: Buffer.from(jsonContent).toString('base64'),
+      branch: branchName,
     });
 
-    await octokit.rest.issues.update({
+    // 4. Criar Pull Request
+    const pr = await octokit.rest.pulls.create({
       owner: REPO_OWNER,
       repo: REPO_NAME,
-      issue_number: issueNumber,
-      state: 'closed'
+      title: `✨ Novo PR: Obra "${titulo}"`,
+      head: branchName,
+      base: BASE_BRANCH,
+      body: `Obra submetida por ${nomeArtista}. Aguardando aprovação para ser adicionada à galeria.`,
     });
 
-    return res.status(200).json({ message: 'Obra aprovada e publicada com sucesso!' });
+    return res.status(200).json({
+      message: 'Pull Request criado com sucesso!',
+      prUrl: pr.data.html_url,
+    });
+
   } catch (erro) {
-    console.error('[ERRO] Ao aprovar a obra:', erro);
-    return res.status(500).json({ message: 'Erro ao aprovar e publicar a obra.' });
+    console.error('[ERRO] Ao criar PR automático:', erro);
+    return res.status(500).json({ message: 'Erro ao criar Pull Request automático' });
   }
 }
