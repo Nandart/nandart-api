@@ -3,7 +3,7 @@
 import { Octokit } from '@octokit/rest';
 
 const octokit = new Octokit({
-  auth: process.env.GITHUB_TOKEN,
+  auth: process.env.GITHUB_TOKEN
 });
 
 const REPO_OWNER = 'Nandart';
@@ -25,41 +25,39 @@ export default async function handler(req, res) {
       repo: REPO_NAME,
       state: 'open',
       labels: 'submissão',
+      per_page: 100
     });
 
-    const pendentes = issues
-      .filter((issue) => {
-        const corpo = issue.body || '';
-        const contemTodosOsCampos = [
-          '**🎨 Título:**',
-          '**🧑‍🎨 Artista:**',
-          '**📅 Ano:**',
-          '**📝 Descrição:**',
-          '**🌍 Local:',
-          '![Obra]('
-        ].every((campo) => corpo.includes(campo));
-        return contemTodosOsCampos;
-      })
-      .map((issue) => {
-        const tituloMatch = issue.body.match(/\*\*🎨 Título:\*\*\s*(.+)/);
-        const artistaMatch = issue.body.match(/\*\*🧑‍🎨 Artista:\*\*\s*(.+)/);
-        const imagemMatch = issue.body.match(/!\[Obra]\((.+)\)/);
+    const pendentes = [];
 
-        return {
+    for (const issue of issues) {
+      const labels = issue.labels.map((l) => (typeof l === 'string' ? l : l.name));
+      if (!labels.includes('aprovada')) {
+        const body = issue.body || '';
+        const tituloMatch = body.match(/\*\*Título:\*\* (.+)/);
+        const artistaMatch = body.match(/\*\*Artista:\*\* (.+)/);
+        const imagemMatch = body.match(/!\[Obra\]\((.+)\)/);
+
+        const titulo = tituloMatch ? tituloMatch[1].trim() : 'Sem título';
+        const nomeArtista = artistaMatch ? artistaMatch[1].trim() : 'Desconhecido';
+        const imagem = imagemMatch ? imagemMatch[1].trim() : null;
+
+        pendentes.push({
           id: issue.number,
-          titulo: tituloMatch ? tituloMatch[1].trim() : 'Sem título',
-          nomeArtista: artistaMatch ? artistaMatch[1].trim() : 'Desconhecido',
-          imagem: imagemMatch ? imagemMatch[1].trim() : '',
-          url: issue.html_url,
-        };
-      });
+          titulo,
+          nomeArtista,
+          imagem,
+          url: issue.html_url
+        });
+      }
+    }
 
     return res.status(200).json({
       total: pendentes.length,
-      pendentes,
+      pendentes
     });
   } catch (erro) {
-    console.error('[ERRO] Ao obter submissões:', erro);
-    return res.status(500).json({ message: 'Erro ao obter submissões' });
+    console.error('[ERRO] Ao carregar submissões:', erro);
+    return res.status(500).json({ message: 'Erro ao carregar submissões pendentes' });
   }
 }
