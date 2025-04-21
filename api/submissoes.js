@@ -14,9 +14,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
   if (req.method !== 'GET') {
     return res.status(405).json({ message: 'Método não permitido' });
@@ -32,24 +30,38 @@ export default async function handler(req, res) {
 
     const pendentes = issues
       .filter(issue => {
-        const temLabelAprovada = issue.labels.some(label =>
-          typeof label === 'string' ? label === 'aprovada' : label.name === 'aprovada'
-        );
-        return !temLabelAprovada;
+        const corpo = issue.body || '';
+        return corpo.includes('Título:') &&
+               corpo.includes('Artista:') &&
+               corpo.includes('Imagem:');
       })
-      .map(issue => ({
-        id: issue.number,
-        titulo: issue.title,
-        url: issue.html_url,
-        criadoEm: issue.created_at
-      }));
+      .map(issue => {
+        const corpo = issue.body || '';
+        const tituloMatch = corpo.match(/Título:\s*(.+)/);
+        const artistaMatch = corpo.match(/Artista:\s*(.+)/);
+        const imagemMatch = corpo.match(/Imagem:\s*\[.*?\]\((.*?)\)/);
+
+        const titulo = tituloMatch ? tituloMatch[1].trim() : null;
+        const nomeArtista = artistaMatch ? artistaMatch[1].trim() : null;
+        const imagem = imagemMatch ? imagemMatch[1].trim() : null;
+
+        if (!titulo || !nomeArtista || !imagem) return null;
+
+        return {
+          id: issue.number,
+          titulo: `🖼️ Nova Submissão: "${titulo}" por ${nomeArtista}`,
+          url: issue.html_url,
+          criadoEm: issue.created_at
+        };
+      })
+      .filter(Boolean);
 
     return res.status(200).json({
       total: pendentes.length,
       pendentes
     });
   } catch (erro) {
-    console.error('[ERRO] ao obter submissões:', erro);
+    console.error('[ERRO] Ao obter submissões:', erro);
     return res.status(500).json({ message: 'Erro ao obter submissões' });
   }
 }
