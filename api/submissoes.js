@@ -20,40 +20,29 @@ export default async function handler(req, res) {
   }
 
   try {
-    const issues = await octokit.rest.issues.listForRepo({
+    const { data: issues } = await octokit.rest.issues.listForRepo({
       owner: REPO_OWNER,
       repo: REPO_NAME,
-      state: 'open',
-      labels: 'submissão'
+      labels: 'submissao',
+      state: 'open'
     });
 
-    const pendentes = [];
+    const pendentes = issues
+      .filter(issue => !issue.labels.some(label => label.name === 'aprovada'))
+      .map(issue => ({
+        id: issue.number,
+        titulo: issue.title.replace(/^submissao-/, '').replace(/-/g, ' '),
+        url: issue.html_url,
+        body: issue.body,
+        labels: issue.labels
+      }));
 
-    for (const issue of issues.data) {
-      const corpo = issue.body || '';
-      const linhas = corpo.split('\n');
-      const dados = {};
-
-      for (const linha of linhas) {
-        const [chave, ...resto] = linha.split(':');
-        if (chave && resto.length > 0) {
-          dados[chave.trim().toLowerCase()] = resto.join(':').trim();
-        }
-      }
-
-      if (dados['título'] && dados['nome do artista']) {
-        pendentes.push({
-          id: issue.number,
-          titulo: `🖼️ ${dados['título']} por ${dados['nome do artista']}`,
-          url: issue.html_url,
-          imageUrl: dados['imagem'] || ''
-        });
-      }
-    }
-
-    return res.status(200).json({ total: pendentes.length, pendentes });
-  } catch (erro) {
-    console.error('Erro ao obter submissões:', erro);
-    return res.status(500).json({ message: 'Erro ao obter submissões' });
+    res.status(200).json({
+      total: pendentes.length,
+      pendentes
+    });
+  } catch (error) {
+    console.error('[ERRO] Ao listar submissões:', error);
+    res.status(500).json({ message: 'Erro ao obter submissões' });
   }
 }
