@@ -59,22 +59,12 @@ export default async function handler(req, res) {
 
     const imagem = files.imagem;
 
-    const camposObrigatorios = [
-      nomeArtista, titulo, descricao, estilo,
-      tecnica, ano, dimensoes, materiais,
-      local, enderecowallet, imagem
-    ];
-
-    if (camposObrigatorios.some((campo) => !campo || campo.length === 0)) {
+    if (!nomeArtista || !titulo || !descricao || !estilo || !tecnica || !ano || !dimensoes || !materiais || !local || !enderecowallet || !imagem) {
       return res.status(400).json({ message: 'Todos os campos obrigatórios devem ser preenchidos' });
     }
 
     try {
-      const filePath =
-        imagem?.filepath ||
-        imagem?.path ||
-        (Array.isArray(imagem) && imagem[0]?.filepath) ||
-        (Array.isArray(imagem) && imagem[0]?.path);
+      const filePath = imagem?.filepath || imagem?.path || (Array.isArray(imagem) && imagem[0]?.filepath) || (Array.isArray(imagem) && imagem[0]?.path);
 
       if (!filePath) {
         return res.status(500).json({ message: 'Erro: Caminho do ficheiro não encontrado' });
