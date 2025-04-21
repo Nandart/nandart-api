@@ -1,25 +1,39 @@
 // File: /api/submit.js
 
 import formidable from 'formidable';
+import fs from 'fs';
 import { v2 as cloudinary } from 'cloudinary';
 import { Octokit } from '@octokit/rest';
 
 export const config = {
   api: {
-    bodyParser: false
-  }
+    bodyParser: false,
+  },
 };
 
+// ☁️ Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
+  api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+// 🐙 GitHub
+const octokit = new Octokit({
+  auth: process.env.GITHUB_TOKEN,
+});
 
 const REPO_OWNER = 'Nandart';
 const REPO_NAME = 'nandart-submissoes';
+
+// 🔤 Função para remover emojis e caracteres especiais
+function normalizarTexto(texto) {
+  return texto
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remover acentos
+    .replace(/[^\w\s-]/g, '') // remover emojis e símbolos
+    .replace(/\s+/g, '-') // substituir espaços por hífens
+    .toLowerCase();
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -59,37 +73,45 @@ export default async function handler(req, res) {
     }
 
     try {
-      const filePath = imagem?.filepath || imagem?.path;
+      const filePath =
+        imagem?.filepath ||
+        imagem?.path ||
+        (Array.isArray(imagem) && imagem[0]?.filepath) ||
+        (Array.isArray(imagem) && imagem[0]?.path);
 
       if (!filePath) {
-        return res.status(500).json({ message: 'Erro: Caminho do ficheiro não encontrado' });
+        return res.status(500).json({ message: 'Erro: Caminho do ficheiro da imagem não encontrado' });
       }
 
       const uploadResponse = await cloudinary.uploader.upload(filePath, {
-        folder: 'nandart-submissoes'
+        folder: 'nandart-submissoes',
       });
 
       const imageUrl = uploadResponse.secure_url;
 
-      const issueTitle = `🖼️ Nova Submissão: "${titulo}" por ${nomeArtista}`;
+      // ✏️ Normalizar para uso como título de issue
+      const tituloNormalizado = normalizarTexto(titulo);
+      const artistaNormalizado = normalizarTexto(nomeArtista);
+
+      const issueTitle = `submissao-${tituloNormalizado}-${artistaNormalizado}`;
       const issueBody = `
-## Nova obra submetida à galeria NANdART
+## Submissão de obra para a galeria NANdART
 
-**🎨 Título:** ${titulo}  
-**🧑‍🎨 Artista:** ${nomeArtista}  
-**📅 Ano:** ${ano}  
-**🖌️ Estilo:** ${estilo}  
-**🧵 Técnica:** ${tecnica}  
-**📐 Dimensões:** ${dimensoes}  
-**🧱 Materiais:** ${materiais}  
-**🌍 Local:** ${local}  
-
-**📝 Descrição:**  
+**Título:** ${titulo}  
+**Artista:** ${nomeArtista}  
+**Ano:** ${ano}  
+**Estilo:** ${estilo}  
+**Técnica:** ${tecnica}  
+**Dimensões:** ${dimensoes}  
+**Materiais:** ${materiais}  
+**Local de criação:** ${local}  
+**Descrição:**  
 ${descricao}
 
-**👛 Carteira:** \`${enderecowallet}\`  
-**📷 Imagem:**  
-![Obra](${imageUrl})
+**Endereço da Wallet:** \`${enderecowallet}\`
+
+**Imagem:**  
+${imageUrl}
       `;
 
       await octokit.rest.issues.create({
@@ -97,7 +119,7 @@ ${descricao}
         repo: REPO_NAME,
         title: issueTitle,
         body: issueBody,
-        labels: ['submissão', 'obra', 'pendente de revisão']
+        labels: ['submissao', 'pendente']
       });
 
       return res.status(200).json({ message: 'Submissão recebida com sucesso!', imageUrl });
