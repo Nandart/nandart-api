@@ -9,18 +9,6 @@ const octokit = new Octokit({
 const REPO_OWNER = 'Nandart';
 const REPO_NAME = 'nandart-submissoes';
 
-export const config = {
-  api: {
-    bodyParser: false
-  }
-};
-
-function extrairCampo(texto, chave) {
-  const regex = new RegExp(`${chave}:\\s*(.*)`);
-  const match = texto.match(regex);
-  return match ? match[1].trim() : '';
-}
-
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -32,38 +20,46 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { data: issues } = await octokit.rest.issues.listForRepo({
+    const issues = await octokit.rest.issues.listForRepo({
       owner: REPO_OWNER,
       repo: REPO_NAME,
       state: 'open',
-      labels: 'obra',
-      per_page: 100
+      labels: 'submissão'
     });
 
-    const pendentes = issues
-      .filter(issue => !issue.labels.some(label => label.name === 'aprovada'))
-      .map(issue => {
-        const body = issue.body || '';
-        const titulo = extrairCampo(body, 'Título');
-        const nomeArtista = extrairCampo(body, 'Artista');
-        const imagemURL = extrairCampo(body, 'Imagem');
+    const pendentes = [];
 
-        return {
+    for (const issue of issues.data) {
+      const corpo = issue.body || '';
+      const linhas = corpo.split('\n');
+      const dados = {};
+
+      for (const linha of linhas) {
+        const [chaveBruta, ...resto] = linha.split(':');
+        if (!chaveBruta || resto.length === 0) continue;
+
+        const chave = chaveBruta
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+          .trim()
+          .toLowerCase();
+
+        dados[chave] = resto.join(':').trim();
+      }
+
+      if (dados['titulo'] && dados['artista']) {
+        pendentes.push({
           id: issue.number,
-          titulo,
-          nomeArtista,
-          imagem: imagemURL,
-          url: issue.html_url
-        };
-      })
-      .filter(obra => obra.titulo && obra.nomeArtista && obra.imagem);
+          titulo: `🖼️ ${dados['titulo']} por ${dados['artista']}`,
+          url: issue.html_url,
+          imageUrl: dados['imagem'] || ''
+        });
+      }
+    }
 
-    res.status(200).json({
-      total: pendentes.length,
-      pendentes
-    });
+    return res.status(200).json({ total: pendentes.length, pendentes });
   } catch (erro) {
-    console.error('[ERRO] Ao carregar submissões:', erro);
-    res.status(500).json({ message: 'Erro ao carregar submissões' });
+    console.error('Erro ao obter submissões:', erro);
+    return res.status(500).json({ message: 'Erro ao obter submissões' });
   }
 }
