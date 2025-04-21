@@ -1,21 +1,13 @@
 {
   "name": "nandart-api",
   "version": "1.0.0",
-  "description": "API da galeria de arte descentralizada NANdART",
   "main": "index.js",
+  "license": "MIT",
   "type": "module",
-  "scripts": {
-    "dev": "vercel dev",
-    "start": "node api/submit.js"
-  },
   "dependencies": {
-    "@octokit/rest": "^20.0.2",
-    "cloudinary": "^1.37.1",
+    "@octokit/rest": "^20.0.0",
+    "cloudinary": "^1.38.0",
     "formidable": "^3.5.0",
     "slugify": "^1.6.6"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "license": "MIT"
+  }
 }
