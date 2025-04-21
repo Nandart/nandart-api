@@ -22,6 +22,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
+
   if (req.method !== 'GET') {
     return res.status(405).json({ message: 'Método não permitido' });
   }
@@ -31,39 +32,33 @@ export default async function handler(req, res) {
       owner: REPO_OWNER,
       repo: REPO_NAME,
       state: 'open',
-      labels: ['submissão', 'pendente de revisão'],
+      labels: 'submissão,pendente de revisão,obra',
+      per_page: 100
     });
 
-    const pendentes = issues.map((issue) => {
-      const titulo = extrairCampo(issue.body, '🎨 Título');
-      const nomeArtista = extrairCampo(issue.body, '🧑‍🎨 Artista');
+    const pendentes = [];
 
-      return {
-        id: issue.number,
-        titulo: `🖼️ ${titulo} por ${nomeArtista}`,
-        url: issue.html_url,
-        criadoEm: issue.created_at,
-      };
-    });
+    for (const issue of issues) {
+      const body = issue.body || '';
+      const id = issue.number;
+      const titulo = issue.title;
+      const url = issue.html_url;
+      const criadoEm = issue.created_at;
 
-    res.status(200).json({
-      total: pendentes.length,
-      pendentes,
-    });
-  } catch (error) {
-    console.error('[ERRO] Ao obter submissões pendentes:', error);
-    res.status(500).json({ message: 'Erro ao obter submissões pendentes' });
+      const camposEsperados = ['**🎨 Título:**', '**🧑‍🎨 Artista:**', '**📅 Ano:**', '**🖌️ Estilo:**', '**🧵 Técnica:**', '**📐 Dimensões:**', '**🧱 Materiais:**', '**🌍 Local:**', '**📝 Descrição:**', '**👛 Carteira:**', '**📷 Imagem:**'];
+
+      const corpoValido = camposEsperados.every(campo => body.includes(campo));
+
+      if (!corpoValido) {
+        console.warn(`[AVISO] A issue #${id} está com o corpo incompleto ou mal formatado.`);
+      }
+
+      pendentes.push({ id, titulo, url, criadoEm, corpoValido });
+    }
+
+    return res.status(200).json({ total: pendentes.length, pendentes });
+  } catch (erro) {
+    console.error('[ERRO] Ao obter submissões:', erro);
+    return res.status(500).json({ message: 'Erro ao obter submissões' });
   }
-}
-
-// Função auxiliar para extrair campos com base no emoji + título
-function extrairCampo(texto, marcador) {
-  const regex = new RegExp(`\\*\\*${escapeRegex(marcador)}:\\*\\*\\s*(.+)`);
-  const match = texto.match(regex);
-  return match ? match[1].trim() : '[Campo não encontrado]';
-}
-
-// Função auxiliar para escapar caracteres especiais no regex
-function escapeRegex(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
