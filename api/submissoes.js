@@ -2,9 +2,7 @@
 
 import { Octokit } from '@octokit/rest';
 
-const octokit = new Octokit({
-  auth: process.env.GITHUB_TOKEN,
-});
+const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
 const REPO_OWNER = 'Nandart';
 const REPO_NAME = 'nandart-submissoes';
@@ -23,8 +21,8 @@ export default async function handler(req, res) {
     const { data: issues } = await octokit.rest.issues.listForRepo({
       owner: REPO_OWNER,
       repo: REPO_NAME,
-      state: 'open',
-      labels: 'submissão,pendente de revisão'
+      labels: 'pendente de revisão',
+      state: 'open'
     });
 
     const pendentes = issues.map(issue => ({
@@ -35,8 +33,8 @@ export default async function handler(req, res) {
     }));
 
     return res.status(200).json({ total: pendentes.length, pendentes });
-  } catch (error) {
-    console.error('[ERRO] Ao listar submissões:', error);
-    return res.status(500).json({ message: 'Erro ao obter submissões pendentes.' });
+  } catch (erro) {
+    console.error('[ERRO] Ao obter submissões:', erro);
+    return res.status(500).json({ message: 'Erro ao obter submissões pendentes' });
   }
 }
