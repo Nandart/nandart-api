@@ -3,7 +3,7 @@
 import { Octokit } from '@octokit/rest';
 
 const octokit = new Octokit({
-  auth: process.env.GITHUB_TOKEN
+  auth: process.env.GITHUB_TOKEN,
 });
 
 const REPO_OWNER = 'Nandart';
@@ -15,7 +15,6 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
-
   if (req.method !== 'GET') {
     return res.status(405).json({ message: 'Método não permitido' });
   }
@@ -25,40 +24,39 @@ export default async function handler(req, res) {
       owner: REPO_OWNER,
       repo: REPO_NAME,
       state: 'open',
-      labels: 'obra'
+      labels: 'submissão',
     });
 
     const pendentes = issues
-      .filter(issue => {
+      .filter((issue) => {
         const corpo = issue.body || '';
-        return corpo.includes('Título:') &&
-               corpo.includes('Artista:') &&
-               corpo.includes('Imagem:');
+        const contemTodosOsCampos = [
+          '**🎨 Título:**',
+          '**🧑‍🎨 Artista:**',
+          '**📅 Ano:**',
+          '**📝 Descrição:**',
+          '**🌍 Local:',
+          '![Obra]('
+        ].every((campo) => corpo.includes(campo));
+        return contemTodosOsCampos;
       })
-      .map(issue => {
-        const corpo = issue.body || '';
-        const tituloMatch = corpo.match(/Título:\s*(.+)/);
-        const artistaMatch = corpo.match(/Artista:\s*(.+)/);
-        const imagemMatch = corpo.match(/Imagem:\s*\[.*?\]\((.*?)\)/);
-
-        const titulo = tituloMatch ? tituloMatch[1].trim() : null;
-        const nomeArtista = artistaMatch ? artistaMatch[1].trim() : null;
-        const imagem = imagemMatch ? imagemMatch[1].trim() : null;
-
-        if (!titulo || !nomeArtista || !imagem) return null;
+      .map((issue) => {
+        const tituloMatch = issue.body.match(/\*\*🎨 Título:\*\*\s*(.+)/);
+        const artistaMatch = issue.body.match(/\*\*🧑‍🎨 Artista:\*\*\s*(.+)/);
+        const imagemMatch = issue.body.match(/!\[Obra]\((.+)\)/);
 
         return {
           id: issue.number,
-          titulo: `🖼️ Nova Submissão: "${titulo}" por ${nomeArtista}`,
+          titulo: tituloMatch ? tituloMatch[1].trim() : 'Sem título',
+          nomeArtista: artistaMatch ? artistaMatch[1].trim() : 'Desconhecido',
+          imagem: imagemMatch ? imagemMatch[1].trim() : '',
           url: issue.html_url,
-          criadoEm: issue.created_at
         };
-      })
-      .filter(Boolean);
+      });
 
     return res.status(200).json({
       total: pendentes.length,
-      pendentes
+      pendentes,
     });
   } catch (erro) {
     console.error('[ERRO] Ao obter submissões:', erro);
