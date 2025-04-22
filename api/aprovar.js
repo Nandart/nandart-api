@@ -3,20 +3,18 @@
 import { Octokit } from '@octokit/rest';
 import slugify from 'slugify';
 
-const octokit = new Octokit({
-  auth: process.env.GITHUB_TOKEN
-});
-
-const REPO_OWNER = 'Nandart';
-const REPO_NAME = 'nandart-submissoes';
-const REPO_PUBLIC = 'nandart-galeria';
-const BRANCH_BASE = process.env.REPO_PUBLIC_BRANCH || 'main';
-
 export const config = {
   api: {
-    bodyParser: true
-  }
+    bodyParser: true,
+  },
 };
+
+const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+
+const REPO_OWNER = 'Nandart';
+const REPO_PUBLIC = 'nandart-galeria';
+const BRANCH_BASE = process.env.REPO_PUBLIC_BRANCH || 'main';
+const REPO_ISSUES = 'nandart-submissoes';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -28,81 +26,112 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Método não permitido' });
   }
 
-  const { id, titulo, nomeArtista, imagem } = req.body;
+  const { id } = req.body;
 
-  if (!id || !titulo || !nomeArtista || !imagem) {
-    return res.status(400).json({ message: 'Dados em falta na submissão' });
+  if (!id) {
+    return res.status(400).json({ message: 'ID da submissão em falta' });
   }
 
   try {
-    const slug = slugify(`${nomeArtista}-${titulo}`, { lower: true, strict: true });
-    const caminhoFicheiro = `obras/${slug}.md`;
-
-    const conteudo = `
----
-titulo: "${titulo}"
-artista: "${nomeArtista}"
-imagem: "${imagem}"
-slug: "${slug}"
----
-    `.trim();
-
-    const conteudoCodificado = Buffer.from(conteudo).toString('base64');
-
-    // Obter SHA do último commit da branch base
-    const baseInfo = await octokit.rest.repos.get({
+    const { data: issue } = await octokit.rest.issues.get({
       owner: REPO_OWNER,
-      repo: REPO_PUBLIC
+      repo: REPO_ISSUES,
+      issue_number: id,
     });
 
-    const shaBase = (
-      await octokit.rest.git.getRef({
-        owner: REPO_OWNER,
-        repo: REPO_PUBLIC,
-        ref: `heads/${BRANCH_BASE}`
-      })
-    ).data.object.sha;
+    const regex = /(?<=\*\*🎨 Título:\*\* )(.+?)\s*\n.*?\*\*🧑‍🎨 Artista:\*\* (.+?)\s*\n.*?\*\*📅 Ano:\*\* (.+?)\s*\n.*?\*\*🖌️ Estilo:\*\* (.+?)\s*\n.*?\*\*🧵 Técnica:\*\* (.+?)\s*\n.*?\*\*📐 Dimensões:\*\* (.+?)\s*\n.*?\*\*🧱 Materiais:\*\* (.+?)\s*\n.*?\*\*🌍 Local:\*\* (.+?)\s*\n[\s\S]*?\*\*📝 Descrição:\*\*\s*\n([\s\S]*?)\n\n\*\*👛 Carteira:\*\* `(.+?)`\s*\n.*?!\[Obra\]\((.+?)\)/;
 
-    // Criar novo branch para aprovação
-    const nomeBranch = `aprovacao-${id}-${Date.now()}`;
+    const match = issue.body.match(regex);
+
+    if (!match) {
+      return res.status(500).json({ message: 'Não foi possível extrair os dados da issue.' });
+    }
+
+    const [
+      ,
+      titulo,
+      nomeArtista,
+      ano,
+      estilo,
+      tecnica,
+      dimensoes,
+      materiais,
+      local,
+      descricao,
+      enderecowallet,
+      imagem,
+    ] = match;
+
+    const slug = slugify(`${nomeArtista}-${titulo}`, { lower: true });
+    const filePath = `galeria/obras/${slug}.json`;
+
+    const obra = {
+      titulo,
+      nomeArtista,
+      ano,
+      estilo,
+      tecnica,
+      dimensoes,
+      materiais,
+      local,
+      descricao,
+      enderecowallet,
+      imagem,
+      slug,
+    };
+
+    const conteudoJSON = Buffer.from(JSON.stringify(obra, null, 2)).toString('base64');
+
+    const { data: repo } = await octokit.rest.repos.get({
+      owner: REPO_OWNER,
+      repo: REPO_PUBLIC,
+    });
+
+    const sha = repo.default_branch;
+
+    const { data: latestCommit } = await octokit.rest.repos.getCommit({
+      owner: REPO_OWNER,
+      repo: REPO_PUBLIC,
+      ref: BRANCH_BASE,
+    });
+
+    const branchName = `aprovacao-${slug}-${Date.now()}`;
+
     await octokit.rest.git.createRef({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
-      ref: `refs/heads/${nomeBranch}`,
-      sha: shaBase
+      ref: `refs/heads/${branchName}`,
+      sha: latestCommit.sha,
     });
 
-    // Adicionar ficheiro com os dados da obra
     await octokit.rest.repos.createOrUpdateFileContents({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
-      path: caminhoFicheiro,
-      message: `🆕 Adicionar obra: ${titulo}`,
-      content: conteudoCodificado,
-      branch: nomeBranch
+      path: filePath,
+      message: `Adicionar obra: ${titulo}`,
+      content: conteudoJSON,
+      branch: branchName,
     });
 
-    // Criar Pull Request
     await octokit.rest.pulls.create({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
-      title: `✨ Aprovação de nova obra: ${titulo}`,
-      head: nomeBranch,
+      title: `Aprovação de obra: ${titulo}`,
+      head: branchName,
       base: BRANCH_BASE,
-      body: `A obra "${titulo}" de ${nomeArtista} foi aprovada e aguarda integração na galeria.`
+      body: `Esta obra foi aprovada e está pronta para ser integrada na galeria pública.`,
     });
 
-    // Atualizar estado da submissão original (issue)
     await octokit.rest.issues.update({
       owner: REPO_OWNER,
-      repo: REPO_NAME,
-      issue_number: Number(id),
-      labels: ['obra', 'aprovada']
+      repo: REPO_ISSUES,
+      issue_number: id,
+      labels: ['aprovada', 'obra'],
     });
 
-    return res.status(200).json({ message: 'Pull Request criado com sucesso!' });
+    res.status(200).json({ message: 'Pull Request criado com sucesso!' });
   } catch (erro) {
-    console.error('[ERRO] Ao criar PR automático:', erro);
-    return res.status(500).json({ message: 'Erro ao criar Pull Request' });
+    console.error('[ERRO] A criar PR automático:', erro);
+    res.status(500).json({ message: 'Erro ao criar Pull Request ou processar aprovação' });
   }
 }
