@@ -3,7 +3,7 @@
 import { Octokit } from '@octokit/rest';
 
 const octokit = new Octokit({
-  auth: process.env.GITHUB_TOKEN
+  auth: process.env.GITHUB_TOKEN,
 });
 
 const REPO_OWNER = 'Nandart';
@@ -24,49 +24,37 @@ export default async function handler(req, res) {
       owner: REPO_OWNER,
       repo: REPO_NAME,
       state: 'open',
-      labels: ['obra']
+      labels: 'submissão',
+      per_page: 100,
     });
 
-    const pendentes = [];
+    const pendentes = issues
+      .filter(issue => {
+        const temAprovada = issue.labels.some(label => label.name === 'aprovada');
+        return !temAprovada;
+      })
+      .map(issue => {
+        const corpo = issue.body || '';
+        const titulo = extrairCampo(corpo, 'Título');
+        return {
+          id: issue.number,
+          titulo,
+          url: issue.html_url,
+        };
+      });
 
-    for (const issue of issues) {
-      try {
-        const dados = JSON.parse(issue.body);
-
-        if (
-          dados.titulo &&
-          dados.nomeArtista &&
-          dados.descricao &&
-          dados.estilo &&
-          dados.tecnica &&
-          dados.ano &&
-          dados.dimensoes &&
-          dados.materiais &&
-          dados.local &&
-          dados.enderecowallet &&
-          dados.imagem
-        ) {
-          pendentes.push({
-            id: issue.number,
-            titulo: dados.titulo,
-            nomeArtista: dados.nomeArtista,
-            imagem: dados.imagem,
-            url: issue.html_url
-          });
-        } else {
-          console.warn(`[AVISO] Issue #${issue.number} com dados incompletos.`);
-        }
-      } catch (e) {
-        console.warn(`[AVISO] Issue #${issue.number} com corpo inválido.`);
-      }
-    }
-
-    return res.status(200).json({
+    res.status(200).json({
       total: pendentes.length,
-      pendentes
+      pendentes,
     });
   } catch (erro) {
     console.error('[ERRO] Ao obter submissões:', erro);
-    return res.status(500).json({ message: 'Erro ao obter submissões' });
+    res.status(500).json({ message: 'Erro ao obter submissões' });
   }
+}
+
+function extrairCampo(corpo, campo) {
+  const regex = new RegExp(`\\*\\*${campo}:\\*\\*\\s*(.+)`, 'i');
+  const match = corpo.match(regex);
+  return match ? match[1].trim().replace(/[`*_~]/g, '') : 'Sem título';
 }
