@@ -1,9 +1,10 @@
 // File: /api/submit.js
 
+import { IncomingForm } from 'formidable';
 import { Octokit } from '@octokit/rest';
-import formidable from 'formidable';
+import cloudinary from 'cloudinary';
 import fs from 'fs';
-import { v2 as cloudinary } from 'cloudinary';
+import { readFile } from 'fs/promises';
 
 export const config = {
   api: {
@@ -11,104 +12,100 @@ export const config = {
   }
 };
 
-cloudinary.config({
+cloudinary.v2.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+const octokit = new Octokit({
+  auth: process.env.GITHUB_TOKEN
+});
 
 const REPO_OWNER = 'Nandart';
 const REPO_NAME = 'nandart-submissoes';
 
-function sanitize(texto) {
-  return texto
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^\w\s\-.,;:!?()&]/gi, '')
-    .trim();
+function parseForm(req) {
+  const form = new IncomingForm({ multiples: false });
+  form.uploadDir = '/tmp';
+  form.keepExtensions = true;
+
+  return new Promise((resolve, reject) => {
+    form.parse(req, (err, fields, files) => {
+      if (err) reject(err);
+      else resolve({ fields, files });
+    });
+  });
+}
+
+function validarCampos(campos) {
+  const obrigatorios = ['nome', 'titulo', 'descricao', 'estilo', 'tecnica', 'ano', 'dimensoes', 'materiais', 'local', 'carteira'];
+  for (const campo of obrigatorios) {
+    if (!campos[campo] || campos[campo].trim() === '') {
+      return false;
+    }
+  }
+  return true;
+}
+
+function criarCorpoIssue(dados, imagemUrl) {
+  return `
+**Título:** ${dados.titulo}
+**Artista:** ${dados.nome}
+**Ano:** ${dados.ano}
+**Estilo:** ${dados.estilo}
+**Técnica:** ${dados.tecnica}
+**Dimensões:** ${dados.dimensoes}
+**Materiais:** ${dados.materiais}
+**Local:** ${dados.local}
+
+**Descrição:**  
+${dados.descricao}
+
+**Carteira:**  
+${dados.carteira}
+
+**Imagem:**  
+![Obra](${imagemUrl})
+`;
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', 'https://nandart.github.io');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).json({ message: 'Método não permitido' });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: 'Método não permitido' });
+  }
 
   try {
-    const form = formidable({ multiples: false });
+    const { fields, files } = await parseForm(req);
 
-    form.parse(req, async (err, fields, files) => {
-      if (err) {
-        console.error('[ERRO] Ao processar o formulário:', err);
-        return res.status(500).json({ message: 'Erro ao processar o formulário' });
-      }
+    if (!validarCampos(fields) || !files.imagem) {
+      return res.status(400).json({ message: 'Todos os campos obrigatórios devem ser preenchidos' });
+    }
 
-      const {
-        nomeArtista,
-        titulo,
-        descricao,
-        estilo,
-        tecnica,
-        ano,
-        dimensoes,
-        materiais,
-        local,
-        wallet
-      } = fields;
+    const imagemPath = files.imagem.filepath || files.imagem.path;
+    const imagemBuffer = await readFile(imagemPath);
 
-      const imagem = files.imagem;
-
-      if (
-        !nomeArtista || !titulo || !descricao || !estilo || !tecnica || !ano ||
-        !dimensoes || !materiais || !local || !wallet || !imagem
-      ) {
-        return res.status(400).json({ message: 'Todos os campos obrigatórios devem ser preenchidos' });
-      }
-
-      const path = imagem.filepath || imagem.path;
-
-      const resultadoUpload = await cloudinary.uploader.upload(path, {
-        folder: 'nandart',
-        use_filename: true,
-        unique_filename: false
-      });
-
-      const urlImagem = resultadoUpload.secure_url;
-
-      const corpo = `
-**Titulo**: ${sanitize(titulo)}
-**Artista**: ${sanitize(nomeArtista)}
-**Ano**: ${sanitize(ano)}
-**Estilo**: ${sanitize(estilo)}
-**Técnica**: ${sanitize(tecnica)}
-**Dimensões**: ${sanitize(dimensoes)}
-**Materiais**: ${sanitize(materiais)}
-**Local**: ${sanitize(local)}
-
-**Descrição**:  
-${sanitize(descricao)}
-
-**Carteira**: \`${sanitize(wallet)}\`  
-**Imagem**:  
-![Obra](${urlImagem})
-`.trim();
-
-      await octokit.rest.issues.create({
-        owner: REPO_OWNER,
-        repo: REPO_NAME,
-        title: `Nova Submissão: "${sanitize(titulo)}" por ${sanitize(nomeArtista)}`,
-        body: corpo,
-        labels: ['obra']
-      });
-
-      return res.status(200).json({ message: 'Submissão registada com sucesso!' });
+    const upload = await cloudinary.v2.uploader.upload(imagemPath, {
+      folder: 'nandart-obras'
     });
+
+    const issue = await octokit.rest.issues.create({
+      owner: REPO_OWNER,
+      repo: REPO_NAME,
+      title: `Nova Submissão: "${fields.titulo}" por ${fields.nome}`,
+      body: criarCorpoIssue(fields, upload.secure_url),
+      labels: ['obra']
+    });
+
+    return res.status(200).json({ message: 'Submissão recebida com sucesso', issueUrl: issue.data.html_url });
   } catch (erro) {
-    console.error('[ERRO] Submissão falhou:', erro);
-    return res.status(500).json({ message: 'Erro ao processar submissão' });
+    console.error('[ERRO] Upload ou criação de issue:', erro);
+    return res.status(500).json({ message: 'Erro ao processar a submissão' });
   }
 }
