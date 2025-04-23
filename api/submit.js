@@ -1,120 +1,111 @@
-// Importar bibliotecas necessárias
+import { IncomingForm } from 'formidable';
 import { Octokit } from '@octokit/rest';
-import formidable from 'formidable';
+import { v4 as uuidv4 } from 'uuid';
+import slugify from 'slugify';
+import fs from 'fs';
+import path from 'path';
 import cloudinary from 'cloudinary';
+
+cloudinary.v2.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
 export const config = {
   api: {
-    bodyParser: false  // Desativa o body parser padrão do Next.js para lidar com multipart/form-data
+    bodyParser: false
   }
 };
 
+const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
+
 export default async function handler(req, res) {
-  // Definir cabeçalhos CORS para permitir acesso de qualquer origem
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  // Tratar requisição de pré-verificação (OPTIONS) do CORS
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
-
-  // Apenas permitir requisições POST
+  if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') {
-    res.status(405).json({ error: 'Método não permitido. Use POST.' });
-    return;
+    return res.status(405).json({ message: 'Método não permitido' });
   }
 
-  try {
-    // Processar os dados do formulário multipart/form-data com formidable
-    const form = formidable({ multiples: false }); // usar `multiples: true` se for esperado múltiplos arquivos
-    const { fields, files } = await new Promise((resolve, reject) => {
-      form.parse(req, (err, fields, files) => {
-        if (err) reject(err);
-        else resolve({ fields, files });
+  const form = new IncomingForm({ multiples: false, keepExtensions: true });
+
+  form.parse(req, async (err, fields, files) => {
+    if (err) {
+      console.error('[ERRO] Ao analisar o formulário:', err);
+      return res.status(500).json({ message: 'Erro ao processar o formulário' });
+    }
+
+    const {
+      nomeArtista,
+      titulo,
+      descricao,
+      estilo,
+      tecnica,
+      ano,
+      dimensoes,
+      materiais,
+      local,
+      wallet
+    } = fields;
+
+    if (!nomeArtista || !titulo || !descricao || !estilo || !tecnica || !ano || !dimensoes || !materiais || !local || !wallet || !files.imagem) {
+      return res.status(400).json({ message: 'Todos os campos obrigatórios devem ser preenchidos' });
+    }
+
+    const imagemPath = files.imagem.filepath;
+    let imagemUrl;
+
+    try {
+      const uploadResponse = await cloudinary.v2.uploader.upload(imagemPath, {
+        folder: 'nandart',
+        use_filename: true,
+        unique_filename: false
       });
-    });
 
-    // Validar se todos os campos obrigatórios estão presentes
-    const requiredFields = ['nomeArtista', 'titulo', 'descricao', 'estilo', 'tecnica', 'ano', 'dimensoes', 'materiais', 'local', 'enderecowallet'];
-    const missingFields = [];
-    for (const field of requiredFields) {
-      if (!fields[field] || fields[field].trim() === '') {
-        missingFields.push(field);
-      }
-    }
-    // Verificar se o arquivo de imagem foi enviado
-    if (!files.imagem) {
-      missingFields.push('imagem');
+      imagemUrl = uploadResponse.secure_url;
+    } catch (uploadError) {
+      console.error('[ERRO] Upload da imagem para Cloudinary:', uploadError);
+      return res.status(500).json({ message: 'Erro ao carregar a imagem' });
     }
 
-    if (missingFields.length > 0) {
-      // Mapear campos para nomes legíveis na mensagem de erro
-      const fieldNames = {
-        nomeArtista: 'Nome do Artista',
-        titulo: 'Título',
-        descricao: 'Descrição',
-        estilo: 'Estilo',
-        tecnica: 'Técnica',
-        ano: 'Ano',
-        dimensoes: 'Dimensões',
-        materiais: 'Materiais',
-        local: 'Local',
-        enderecowallet: 'Endereço da Wallet',
-        imagem: 'Imagem'
-      };
-      const missingList = missingFields.map(f => fieldNames[f] || f);
-      res.status(400).json({ error: 'Campos obrigatórios em falta: ' + missingList.join(', ') });
-      return;
+    const repoOwner = 'Nandart';
+    const repoName = 'nandart-submissoes';
+    const issueTitle = `Nova Submissão: "${titulo}" por ${nomeArtista}`;
+    const slug = slugify(`${nomeArtista}-${titulo}`, { lower: true });
+
+    const corpo = `
+**Título:** ${titulo}  
+**Artista:** ${nomeArtista}  
+**Ano:** ${ano}  
+**Estilo:** ${estilo}  
+**Técnica:** ${tecnica}  
+**Dimensões:** ${dimensoes}  
+**Materiais:** ${materiais}  
+**Local:** ${local}  
+**Descrição:**  
+${descricao}
+
+**Carteira:** ${wallet}  
+**Imagem:**  
+![Obra](${imagemUrl})
+    `.trim();
+
+    try {
+      await octokit.rest.issues.create({
+        owner: repoOwner,
+        repo: repoName,
+        title: issueTitle,
+        body: corpo,
+        labels: ['obra', 'pendente']
+      });
+
+      return res.status(200).json({ message: 'Submissão recebida com sucesso!', imagemUrl });
+    } catch (githubError) {
+      console.error('[ERRO] Upload ou criação de issue:', githubError);
+      return res.status(500).json({ message: 'Erro ao registar a submissão no GitHub' });
     }
-
-    // Configurar o Cloudinary com credenciais via variáveis de ambiente
-    cloudinary.v2.config({
-      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-      api_key: process.env.CLOUDINARY_API_KEY,
-      api_secret: process.env.CLOUDINARY_API_SECRET
-    });
-
-    // Enviar a imagem para o Cloudinary
-    const imageFile = files.imagem;
-    const filePath = imageFile.filepath || imageFile.path;  // caminho temporário do arquivo recebido
-    const uploadResult = await cloudinary.v2.uploader.upload(filePath);
-    const imageUrl = uploadResult.secure_url;
-
-    // Inicializar o cliente Octokit (GitHub) com o token de autenticação
-    const octokit = new Octokit({ auth: process.env.GITHUB_TOKEN });
-
-    // Preparar título e corpo da issue em formato markdown
-    const issueTitle = `${fields.titulo} - ${fields.nomeArtista}`;
-    const issueBodyLines = [
-      `Nome do Artista: ${fields.nomeArtista}`,
-      `Título: ${fields.titulo}`,
-      `Descrição: ${fields.descricao}`,
-      `Estilo: ${fields.estilo}`,
-      `Técnica: ${fields.tecnica}`,
-      `Ano: ${fields.ano}`,
-      `Dimensões: ${fields.dimensoes}`,
-      `Materiais: ${fields.materiais}`,
-      `Local: ${fields.local}`,
-      `Endereço da Wallet: ${fields.enderecowallet}`,
-      `Imagem: ${imageUrl}`
-    ];
-    const issueBody = issueBodyLines.join('\n');
-
-    // Criar uma nova issue no repositório GitHub com os dados submetidos
-    await octokit.rest.issues.create({
-      owner: process.env.GITHUB_REPO_OWNER,  // usuário ou organização dona do repositório (definido em variáveis de ambiente)
-      repo: 'nandart-submissoes',
-      title: issueTitle,
-      body: issueBody
-    });
-
-    // Responder com sucesso caso tudo tenha sido processado corretamente
-    res.status(200).json({ message: 'Submissão recebida com sucesso.' });
-  } catch (error) {
-    console.error('Error processing submission:', error);
-    res.status(500).json({ error: 'Erro ao processar a submissão.' });
-  }
+  });
 }
