@@ -10,8 +10,7 @@ const REPO_OWNER = 'Nandart';
 const REPO_NAME = 'nandart-submissoes';
 
 export default async function handler(req, res) {
-  // CORS headers
-  res.setHeader('Access-Control-Allow-Origin', 'https://nandart.github.io');
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -21,62 +20,36 @@ export default async function handler(req, res) {
   }
 
   try {
-    const issues = await octokit.rest.issues.listForRepo({
+    const { data: issues } = await octokit.rest.issues.listForRepo({
       owner: REPO_OWNER,
       repo: REPO_NAME,
+      labels: 'submissão,pendente de revisão',
       state: 'open',
-      labels: 'obra',
       per_page: 100,
     });
 
-    const pendentes = issues.data
-      .filter(issue => {
-        const labels = issue.labels.map(label => (typeof label === 'string' ? label : label.name));
-        return !labels.includes('aprovada');
-      })
+    const pendentes = issues
+      .filter(issue => issue.title && issue.body)
       .map(issue => {
-        const corpo = issue.body || '';
-        const linhas = corpo.split('\n');
-
-        const dados = {
-          id: issue.number,
-          url: issue.html_url,
-          titulo: extrairValor(corpo, ['Título', 'Título da Obra']),
-          nomeArtista: extrairValor(corpo, ['Artista', 'Nome do Artista']),
-          imagem: extrairLinkImagem(corpo),
-          descricao: extrairValor(corpo, ['Descrição', 'Descrição da Obra']),
-          local: extrairValor(corpo, ['Local', 'Local de Criação']),
-          ano: extrairValor(corpo, ['Ano', 'Ano de Criação']),
+        const linhas = issue.body.split('\n').map(l => l.trim());
+        const getCampo = (prefixo) => {
+          const linha = linhas.find(l => l.toLowerCase().startsWith(prefixo.toLowerCase()));
+          return linha ? linha.split(':').slice(1).join(':').trim().replace(/^"|"$/g, '') : null;
         };
 
-        if (dados.titulo && dados.nomeArtista && dados.imagem && dados.descricao && dados.local && dados.ano) {
-          return dados;
-        }
-
-        return null;
+        return {
+          id: issue.number,
+          titulo: getCampo('**🎨 Título**') || getCampo('**Titulo**') || issue.title,
+          nomeArtista: getCampo('**🧑‍🎨 Artista**') || getCampo('**Artista**'),
+          imagem: getCampo('**📷 Imagem**') || '',
+          url: issue.html_url
+        };
       })
-      .filter(Boolean);
+      .filter(o => o.titulo && o.nomeArtista && o.imagem);
 
-    res.status(200).json({ total: pendentes.length, pendentes });
+    return res.status(200).json({ total: pendentes.length, pendentes });
   } catch (erro) {
-    console.error('[ERRO] Ao obter submissões:', erro);
-    res.status(500).json({ message: 'Erro ao obter submissões' });
+    console.error('[ERRO] A obter submissões:', erro);
+    return res.status(500).json({ message: 'Erro ao obter submissões' });
   }
-}
-
-function extrairValor(texto, chaves) {
-  for (const chave of chaves) {
-    const regex = new RegExp(`\\*?\\*?${chave}:\\*?\\*?\\s*(.+)`, 'i');
-    const match = texto.match(regex);
-    if (match) {
-      return match[1].trim();
-    }
-  }
-  return '';
-}
-
-function extrairLinkImagem(texto) {
-  const regex = /\[.*?\]\((https?:\/\/.*?)\)/;
-  const match = texto.match(regex);
-  return match ? match[1] : '';
 }
