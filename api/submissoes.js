@@ -1,73 +1,82 @@
+// File: /api/submissoes.js
+
 import { Octokit } from '@octokit/rest';
 
 const octokit = new Octokit({
-  auth: process.env.GITHUB_TOKEN
+  auth: process.env.GITHUB_TOKEN,
 });
 
 const REPO_OWNER = 'Nandart';
 const REPO_NAME = 'nandart-submissoes';
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  // CORS headers
+  res.setHeader('Access-Control-Allow-Origin', 'https://nandart.github.io');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'GET') {
+    return res.status(405).json({ message: 'Método não permitido' });
+  }
 
   try {
-    // Se a requisição for para uma única submissão por ID
-    const { id } = req.query;
-
-    if (id) {
-      const { data: issue } = await octokit.rest.issues.get({
-        owner: REPO_OWNER,
-        repo: REPO_NAME,
-        issue_number: id
-      });
-
-      const titulo = issue.title.replace(/^Nova Submissão: /i, '').replace(/"/g, '').trim();
-      const nomeArtista = titulo.includes('por') ? titulo.split('por')[1].trim() : 'Artista Desconhecido';
-
-      const body = issue.body || '';
-      const imagemRegex = /!\[.*\]\((.*?)\)/;
-      const imagemMatch = body.match(imagemRegex);
-      const imagem = imagemMatch ? imagemMatch[1] : '';
-
-      return res.status(200).json({
-        id,
-        titulo,
-        nomeArtista,
-        imagem
-      });
-    }
-
-    // Se não for especificado um ID, listar todas as submissões pendentes
-    const { data: issues } = await octokit.rest.issues.listForRepo({
+    const issues = await octokit.rest.issues.listForRepo({
       owner: REPO_OWNER,
       repo: REPO_NAME,
       state: 'open',
-      labels: 'obra'
+      labels: 'obra',
+      per_page: 100,
     });
 
-    const pendentes = issues.map((issue) => {
-      const titulo = issue.title.replace(/^Nova Submissão: /i, '').replace(/"/g, '').trim();
-      const nomeArtista = titulo.includes('por') ? titulo.split('por')[1].trim() : 'Artista Desconhecido';
+    const pendentes = issues.data
+      .filter(issue => {
+        const labels = issue.labels.map(label => (typeof label === 'string' ? label : label.name));
+        return !labels.includes('aprovada');
+      })
+      .map(issue => {
+        const corpo = issue.body || '';
+        const linhas = corpo.split('\n');
 
-      return {
-        id: issue.number,
-        titulo,
-        nomeArtista,
-        url: issue.html_url
-      };
-    });
+        const dados = {
+          id: issue.number,
+          url: issue.html_url,
+          titulo: extrairValor(corpo, ['Título', 'Título da Obra']),
+          nomeArtista: extrairValor(corpo, ['Artista', 'Nome do Artista']),
+          imagem: extrairLinkImagem(corpo),
+          descricao: extrairValor(corpo, ['Descrição', 'Descrição da Obra']),
+          local: extrairValor(corpo, ['Local', 'Local de Criação']),
+          ano: extrairValor(corpo, ['Ano', 'Ano de Criação']),
+        };
 
-    return res.status(200).json({
-      total: pendentes.length,
-      pendentes
-    });
+        if (dados.titulo && dados.nomeArtista && dados.imagem && dados.descricao && dados.local && dados.ano) {
+          return dados;
+        }
 
+        return null;
+      })
+      .filter(Boolean);
+
+    res.status(200).json({ total: pendentes.length, pendentes });
   } catch (erro) {
-    console.error('[ERRO] Ao carregar submissões:', erro);
-    return res.status(500).json({ message: 'Erro ao carregar submissões' });
+    console.error('[ERRO] Ao obter submissões:', erro);
+    res.status(500).json({ message: 'Erro ao obter submissões' });
   }
+}
+
+function extrairValor(texto, chaves) {
+  for (const chave of chaves) {
+    const regex = new RegExp(`\\*?\\*?${chave}:\\*?\\*?\\s*(.+)`, 'i');
+    const match = texto.match(regex);
+    if (match) {
+      return match[1].trim();
+    }
+  }
+  return '';
+}
+
+function extrairLinkImagem(texto) {
+  const regex = /\[.*?\]\((https?:\/\/.*?)\)/;
+  const match = texto.match(regex);
+  return match ? match[1] : '';
 }
