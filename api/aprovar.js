@@ -30,7 +30,7 @@ export default async function handler(req, res) {
 
   try {
     const slug = slugify(`${nomeArtista}-${titulo}`, { lower: true, strict: true });
-    const path = `galeria/obras/${slug}.md`;
+    const filePath = `galeria/obras/${slug}.md`;
 
     const conteudo = `
 ---
@@ -62,7 +62,7 @@ slug: "${slug}"
     await octokit.rest.repos.createOrUpdateFileContents({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
-      path,
+      path: filePath,
       message: `Adicionar nova obra: ${titulo}`,
       content: contentEncoded,
       branch: branchName
