@@ -10,12 +10,14 @@ export const config = {
   },
 };
 
+// 🌩️ Configuração Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+// 🐙 GitHub
 const octokit = new Octokit({
   auth: process.env.GITHUB_TOKEN,
 });
@@ -46,6 +48,7 @@ export default async function handler(req, res) {
     } = fields;
 
     const imagem = files.imagem;
+
     if (!nomeArtista || !titulo || !descricao || !estilo || !tecnica || !ano ||
         !dimensoes || !materiais || !local || !enderecowallet || !imagem) {
       return res.status(400).json({ message: 'Todos os campos obrigatórios devem ser preenchidos' });
@@ -85,7 +88,10 @@ Imagem: ${imageUrl}
         labels: ['submissao', 'pendente de revisao']
       });
 
-      return res.status(200).json({ message: 'Submissão recebida com sucesso!', imageUrl });
+      return res.status(200).json({
+        message: 'Submissão recebida com sucesso!',
+        imageUrl
+      });
     } catch (erro) {
       return res.status(500).json({ message: 'Erro ao fazer upload da imagem ou criar issue' });
     }
