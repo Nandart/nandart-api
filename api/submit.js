@@ -10,14 +10,14 @@ export const config = {
   },
 };
 
-// 🌩️ Configuração do Cloudinary
+// Configuração Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// 🐙 Configuração do GitHub
+// GitHub
 const octokit = new Octokit({
   auth: process.env.GITHUB_TOKEN,
 });
@@ -26,7 +26,7 @@ const REPO_OWNER = 'Nandart';
 const REPO_NAME = 'nandart-submissoes';
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', 'https://nandart.github.io');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -39,30 +39,35 @@ export default async function handler(req, res) {
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
-      console.error('[ERRO] Falha no processamento do formulário:', err);
+      console.error('[ERRO] Formulário:', err);
       return res.status(500).json({ message: 'Erro ao processar o formulário' });
     }
 
-    const {
-      nomeArtista,
-      titulo,
-      descricao,
-      estilo,
-      tecnica,
-      ano,
-      dimensoes,
-      materiais,
-      local,
-      enderecowallet
-    } = fields;
-
-    const imagem = files.imagem;
-
-    if (!nomeArtista || !titulo || !descricao || !estilo || !tecnica || !ano || !dimensoes || !materiais || !local || !enderecowallet || !imagem) {
-      return res.status(400).json({ message: 'Todos os campos obrigatórios devem ser preenchidos' });
-    }
-
     try {
+      const {
+        nomeArtista,
+        titulo,
+        descricao,
+        estilo,
+        tecnica,
+        ano,
+        dimensoes,
+        materiais,
+        local,
+        enderecowallet
+      } = fields;
+
+      const imagem = files.imagem;
+
+      const camposObrigatorios = [
+        nomeArtista, titulo, descricao, estilo, tecnica,
+        ano, dimensoes, materiais, local, enderecowallet, imagem
+      ];
+
+      if (camposObrigatorios.some(campo => !campo || (typeof campo === 'string' && campo.trim() === ''))) {
+        return res.status(400).json({ message: 'Todos os campos obrigatórios devem ser preenchidos' });
+      }
+
       const filePath =
         imagem?.filepath ||
         imagem?.path ||
@@ -70,7 +75,7 @@ export default async function handler(req, res) {
         (Array.isArray(imagem) && imagem[0]?.path);
 
       if (!filePath) {
-        return res.status(500).json({ message: 'Caminho do ficheiro da imagem não encontrado' });
+        return res.status(500).json({ message: 'Erro: Caminho do ficheiro da imagem não encontrado' });
       }
 
       const uploadResponse = await cloudinary.uploader.upload(filePath, {
@@ -79,23 +84,21 @@ export default async function handler(req, res) {
 
       const imageUrl = uploadResponse.secure_url;
 
-      const issueTitle = `Nova Submissao: "${titulo}" por ${nomeArtista}`;
+      const issueTitle = `Nova Submissão: "${titulo}" por ${nomeArtista}`;
       const issueBody = `
-## Submissao de Obra para Avaliacao
+Titulo: ${titulo}
+Artista: ${nomeArtista}
+Ano: ${ano}
+Estilo: ${estilo}
+Tecnica: ${tecnica}
+Dimensoes: ${dimensoes}
+Materiais: ${materiais}
+Local: ${local}
 
-Titulo: "${titulo}"  
-Artista: "${nomeArtista}"  
-Ano: "${ano}"  
-Estilo: "${estilo}"  
-Tecnica: "${tecnica}"  
-Dimensoes: "${dimensoes}"  
-Materiais: "${materiais}"  
-Local: "${local}"  
-
-Descricao:  
+Descricao:
 ${descricao}
 
-Carteira: ${enderecowallet}  
+Carteira: ${enderecowallet}
 Imagem: ${imageUrl}
       `.trim();
 
@@ -104,7 +107,7 @@ Imagem: ${imageUrl}
         repo: REPO_NAME,
         title: issueTitle,
         body: issueBody,
-        labels: ['submissao', 'pendente de revisao']
+        labels: ['submissão', 'pendente de revisão']
       });
 
       return res.status(200).json({
@@ -113,7 +116,7 @@ Imagem: ${imageUrl}
       });
 
     } catch (erro) {
-      console.error('[ERRO] Submissao:', erro);
+      console.error('[ERRO] Submissão:', erro);
       return res.status(500).json({ message: 'Erro ao fazer upload da imagem ou criar issue' });
     }
   });
