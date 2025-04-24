@@ -4,7 +4,7 @@ import { Octokit } from '@octokit/rest';
 import slugify from 'slugify';
 
 const octokit = new Octokit({
-  auth: process.env.GITHUB_TOKEN
+  auth: process.env.GITHUB_TOKEN,
 });
 
 const REPO_OWNER = 'Nandart';
@@ -13,7 +13,7 @@ const REPO_PUBLIC = 'nandart-galeria';
 const BRANCH_DESTINO = 'main';
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', 'https://nandart.github.io');
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -30,15 +30,16 @@ export default async function handler(req, res) {
 
   try {
     const slug = slugify(`${nomeArtista}-${titulo}`, { lower: true, strict: true });
-    const filePath = `galeria/obras/${slug}.md`;
+    const path = `galeria/obras/${slug}.md`;
 
-    const conteudo = `---
+    const conteudo = `
+---
 titulo: "${titulo}"
 artista: "${nomeArtista}"
 imagem: "${imagem}"
 slug: "${slug}"
 ---
-`;
+    `.trim();
 
     const contentEncoded = Buffer.from(conteudo).toString('base64');
 
@@ -49,7 +50,7 @@ slug: "${slug}"
     });
 
     const shaBase = refData.object.sha;
-    const branchName = `aprovacao-${slug}-${Date.now()}`;
+    const branchName = `aprovacao-${id}-${Date.now()}`;
 
     await octokit.rest.git.createRef({
       owner: REPO_OWNER,
@@ -61,7 +62,7 @@ slug: "${slug}"
     await octokit.rest.repos.createOrUpdateFileContents({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
-      path: filePath,
+      path,
       message: `Adicionar nova obra: ${titulo}`,
       content: contentEncoded,
       branch: branchName
@@ -73,7 +74,7 @@ slug: "${slug}"
       title: `Aprovar nova obra: ${titulo}`,
       head: branchName,
       base: BRANCH_DESTINO,
-      body: `Esta obra foi aprovada no painel de curadoria e está pronta para ser integrada na galeria pública.`
+      body: `Esta obra foi aprovada no painel e está pronta para ser integrada na galeria.`
     });
 
     await octokit.rest.issues.update({
