@@ -13,7 +13,7 @@ const REPO_PUBLIC = 'nandart-galeria';
 const BRANCH_DESTINO = 'main';
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', 'https://nandart.github.io');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -39,7 +39,7 @@ artista: "${nomeArtista}"
 imagem: "${imagem}"
 slug: "${slug}"
 ---
-`.trim();
+    `.trim();
 
     const contentEncoded = Buffer.from(conteudo).toString('base64');
 
