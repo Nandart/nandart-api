@@ -10,14 +10,12 @@ export const config = {
   },
 };
 
-// Configuração Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// GitHub
 const octokit = new Octokit({
   auth: process.env.GITHUB_TOKEN,
 });
@@ -26,7 +24,7 @@ const REPO_OWNER = 'Nandart';
 const REPO_NAME = 'nandart-submissoes';
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', 'https://nandart.github.io');
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -39,41 +37,22 @@ export default async function handler(req, res) {
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
-      console.error('[ERRO] Formulário:', err);
       return res.status(500).json({ message: 'Erro ao processar o formulário' });
     }
 
+    const {
+      nomeArtista, titulo, descricao, estilo, tecnica,
+      ano, dimensoes, materiais, local, enderecowallet
+    } = fields;
+
+    const imagem = files.imagem;
+    if (!nomeArtista || !titulo || !descricao || !estilo || !tecnica || !ano ||
+        !dimensoes || !materiais || !local || !enderecowallet || !imagem) {
+      return res.status(400).json({ message: 'Todos os campos obrigatórios devem ser preenchidos' });
+    }
+
     try {
-      const {
-        nomeArtista,
-        titulo,
-        descricao,
-        estilo,
-        tecnica,
-        ano,
-        dimensoes,
-        materiais,
-        local,
-        enderecowallet
-      } = fields;
-
-      const imagem = files.imagem;
-
-      const camposObrigatorios = [
-        nomeArtista, titulo, descricao, estilo, tecnica,
-        ano, dimensoes, materiais, local, enderecowallet, imagem
-      ];
-
-      if (camposObrigatorios.some(campo => !campo || (typeof campo === 'string' && campo.trim() === ''))) {
-        return res.status(400).json({ message: 'Todos os campos obrigatórios devem ser preenchidos' });
-      }
-
-      const filePath =
-        imagem?.filepath ||
-        imagem?.path ||
-        (Array.isArray(imagem) && imagem[0]?.filepath) ||
-        (Array.isArray(imagem) && imagem[0]?.path);
-
+      const filePath = imagem?.filepath || imagem?.path;
       if (!filePath) {
         return res.status(500).json({ message: 'Erro: Caminho do ficheiro da imagem não encontrado' });
       }
@@ -84,7 +63,6 @@ export default async function handler(req, res) {
 
       const imageUrl = uploadResponse.secure_url;
 
-      const issueTitle = `Nova Submissão: "${titulo}" por ${nomeArtista}`;
       const issueBody = `
 Titulo: ${titulo}
 Artista: ${nomeArtista}
@@ -94,10 +72,7 @@ Tecnica: ${tecnica}
 Dimensoes: ${dimensoes}
 Materiais: ${materiais}
 Local: ${local}
-
-Descricao:
-${descricao}
-
+Descricao: ${descricao}
 Carteira: ${enderecowallet}
 Imagem: ${imageUrl}
       `.trim();
@@ -105,18 +80,13 @@ Imagem: ${imageUrl}
       await octokit.rest.issues.create({
         owner: REPO_OWNER,
         repo: REPO_NAME,
-        title: issueTitle,
+        title: `Submissao: ${titulo} por ${nomeArtista}`,
         body: issueBody,
-        labels: ['submissão', 'pendente de revisão']
+        labels: ['submissao', 'pendente de revisao']
       });
 
-      return res.status(200).json({
-        message: 'Submissão recebida com sucesso!',
-        imageUrl
-      });
-
+      return res.status(200).json({ message: 'Submissão recebida com sucesso!', imageUrl });
     } catch (erro) {
-      console.error('[ERRO] Submissão:', erro);
       return res.status(500).json({ message: 'Erro ao fazer upload da imagem ou criar issue' });
     }
   });
