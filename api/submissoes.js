@@ -32,9 +32,10 @@ export default async function handler(req, res) {
       .filter(issue => issue.title && issue.body)
       .map(issue => {
         const linhas = issue.body.split('\n').map(l => l.trim());
+
         const getCampo = (chave) => {
           const linha = linhas.find(l => l.toLowerCase().startsWith(`${chave.toLowerCase()}:`));
-          return linha ? linha.split(':').slice(1).join(':').trim() : null;
+          return linha ? linha.split(':').slice(1).join(':').trim().replace(/^"|"$/g, '') : null;
         };
 
         return {
