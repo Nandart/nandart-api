@@ -10,7 +10,7 @@ const REPO_OWNER = 'Nandart';
 const REPO_NAME = 'nandart-submissoes';
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Origin', 'https://nandart.github.io');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -23,7 +23,7 @@ export default async function handler(req, res) {
     const { data: issues } = await octokit.rest.issues.listForRepo({
       owner: REPO_OWNER,
       repo: REPO_NAME,
-      labels: 'submissao,pendente de revisao',
+      labels: 'submissão,pendente de revisão',
       state: 'open',
       per_page: 100,
     });
@@ -32,16 +32,16 @@ export default async function handler(req, res) {
       .filter(issue => issue.title && issue.body)
       .map(issue => {
         const linhas = issue.body.split('\n').map(l => l.trim());
-        const getCampo = (campo) => {
-          const linha = linhas.find(l => l.toLowerCase().startsWith(`${campo.toLowerCase()}:`));
-          return linha ? linha.split(':').slice(1).join(':').trim() : null;
+        const getCampo = (prefixo) => {
+          const linha = linhas.find(l => l.toLowerCase().startsWith(prefixo.toLowerCase()));
+          return linha ? linha.split(':').slice(1).join(':').trim().replace(/^"|"$/g, '') : null;
         };
 
         return {
           id: issue.number,
-          titulo: getCampo('Titulo'),
-          nomeArtista: getCampo('Artista'),
-          imagem: getCampo('Imagem'),
+          titulo: getCampo('**🎨 Título**') || getCampo('**Titulo**') || issue.title,
+          nomeArtista: getCampo('**🧑‍🎨 Artista**') || getCampo('**Artista**'),
+          imagem: getCampo('**📷 Imagem**') || '',
           url: issue.html_url
         };
       })
