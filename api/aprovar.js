@@ -4,7 +4,7 @@ import { Octokit } from '@octokit/rest';
 import slugify from 'slugify';
 
 const octokit = new Octokit({
-  auth: process.env.GITHUB_TOKEN,
+  auth: process.env.GITHUB_TOKEN
 });
 
 const REPO_OWNER = 'Nandart';
@@ -39,7 +39,7 @@ artista: "${nomeArtista}"
 imagem: "${imagem}"
 slug: "${slug}"
 ---
-    `.trim();
+`.trim();
 
     const contentEncoded = Buffer.from(conteudo).toString('base64');
 
