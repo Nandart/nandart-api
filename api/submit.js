@@ -10,14 +10,14 @@ export const config = {
   },
 };
 
-// 🌩️ Configuração Cloudinary
+// Configuração do Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// 🐙 GitHub
+// GitHub
 const octokit = new Octokit({
   auth: process.env.GITHUB_TOKEN,
 });
@@ -39,7 +39,6 @@ export default async function handler(req, res) {
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
-      console.error('[ERRO] Formulário:', err);
       return res.status(500).json({ message: 'Erro ao processar o formulário' });
     }
 
@@ -50,17 +49,18 @@ export default async function handler(req, res) {
 
     const imagem = files.imagem;
 
+    const filePath =
+      imagem?.filepath ||
+      imagem?.path ||
+      (Array.isArray(imagem) && imagem[0]?.filepath) ||
+      (Array.isArray(imagem) && imagem[0]?.path);
+
     if (!nomeArtista || !titulo || !descricao || !estilo || !tecnica || !ano ||
-        !dimensoes || !materiais || !local || !enderecowallet || !imagem) {
+        !dimensoes || !materiais || !local || !enderecowallet || !filePath) {
       return res.status(400).json({ message: 'Todos os campos obrigatórios devem ser preenchidos' });
     }
 
     try {
-      const filePath = imagem?.filepath || imagem?.path;
-      if (!filePath) {
-        return res.status(500).json({ message: 'Erro: Caminho do ficheiro da imagem não encontrado' });
-      }
-
       const uploadResponse = await cloudinary.uploader.upload(filePath, {
         folder: 'nandart-submissoes',
       });
@@ -89,11 +89,7 @@ Imagem: ${imageUrl}
         labels: ['submissao', 'pendente de revisao']
       });
 
-      return res.status(200).json({
-        message: 'Submissão recebida com sucesso!',
-        imageUrl
-      });
-
+      return res.status(200).json({ message: 'Submissão recebida com sucesso!', imageUrl });
     } catch (erro) {
       console.error('[ERRO] Submissao:', erro);
       return res.status(500).json({ message: 'Erro ao fazer upload da imagem ou criar issue' });
