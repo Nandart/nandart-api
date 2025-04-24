@@ -33,15 +33,15 @@ export default async function handler(req, res) {
       .map(issue => {
         const linhas = issue.body.split('\n').map(l => l.trim());
         const getCampo = (campo) => {
-          const linha = linhas.find(l => l.toLowerCase().startsWith(campo.toLowerCase() + ':'));
+          const linha = linhas.find(l => l.toLowerCase().startsWith(`${campo.toLowerCase()}:`));
           return linha ? linha.split(':').slice(1).join(':').trim() : null;
         };
 
         return {
           id: issue.number,
-          titulo: getCampo('Titulo') || issue.title,
+          titulo: getCampo('Titulo'),
           nomeArtista: getCampo('Artista'),
-          imagem: getCampo('Imagem') || '',
+          imagem: getCampo('Imagem'),
           url: issue.html_url
         };
       })
