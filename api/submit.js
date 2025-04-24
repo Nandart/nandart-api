@@ -39,6 +39,7 @@ export default async function handler(req, res) {
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
+      console.error('[ERRO] Formulário:', err);
       return res.status(500).json({ message: 'Erro ao processar o formulário' });
     }
 
@@ -92,7 +93,9 @@ Imagem: ${imageUrl}
         message: 'Submissão recebida com sucesso!',
         imageUrl
       });
+
     } catch (erro) {
+      console.error('[ERRO] Submissao:', erro);
       return res.status(500).json({ message: 'Erro ao fazer upload da imagem ou criar issue' });
     }
   });
