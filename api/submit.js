@@ -10,14 +10,14 @@ export const config = {
   },
 };
 
-// 🌩️ Cloudinary
+// 🌩️ Configuração do Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// 🐙 GitHub
+// 🐙 Configuração do GitHub
 const octokit = new Octokit({
   auth: process.env.GITHUB_TOKEN,
 });
@@ -26,7 +26,7 @@ const REPO_OWNER = 'Nandart';
 const REPO_NAME = 'nandart-submissoes';
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', 'https://nandart.github.io');
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -39,7 +39,7 @@ export default async function handler(req, res) {
 
   form.parse(req, async (err, fields, files) => {
     if (err) {
-      console.error('[ERRO] Formulário:', err);
+      console.error('[ERRO] Falha no processamento do formulário:', err);
       return res.status(500).json({ message: 'Erro ao processar o formulário' });
     }
 
@@ -70,7 +70,7 @@ export default async function handler(req, res) {
         (Array.isArray(imagem) && imagem[0]?.path);
 
       if (!filePath) {
-        return res.status(500).json({ message: 'Erro: Caminho do ficheiro da imagem não encontrado' });
+        return res.status(500).json({ message: 'Caminho do ficheiro da imagem não encontrado' });
       }
 
       const uploadResponse = await cloudinary.uploader.upload(filePath, {
@@ -79,22 +79,23 @@ export default async function handler(req, res) {
 
       const imageUrl = uploadResponse.secure_url;
 
-      // 📄 Corpo padronizado da issue (sem emojis, com prefixos esperados pelo submissoes.js)
       const issueTitle = `Nova Submissao: "${titulo}" por ${nomeArtista}`;
       const issueBody = `
-Titulo: ${titulo}
-Artista: ${nomeArtista}
-Ano: ${ano}
-Estilo: ${estilo}
-Tecnica: ${tecnica}
-Dimensoes: ${dimensoes}
-Materiais: ${materiais}
-Local: ${local}
+## Submissao de Obra para Avaliacao
 
-Descricao:
+Titulo: "${titulo}"  
+Artista: "${nomeArtista}"  
+Ano: "${ano}"  
+Estilo: "${estilo}"  
+Tecnica: "${tecnica}"  
+Dimensoes: "${dimensoes}"  
+Materiais: "${materiais}"  
+Local: "${local}"  
+
+Descricao:  
 ${descricao}
 
-Carteira: ${enderecowallet}
+Carteira: ${enderecowallet}  
 Imagem: ${imageUrl}
       `.trim();
 
