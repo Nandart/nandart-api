@@ -10,7 +10,7 @@ const REPO_OWNER = 'Nandart';
 const REPO_NAME = 'nandart-submissoes';
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', 'https://nandart.github.io');
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -28,24 +28,31 @@ export default async function handler(req, res) {
       per_page: 100,
     });
 
-    const pendentes = issues.map(issue => {
-      const linhas = issue.body.split('\n').map(l => l.trim());
+    const pendentes = issues
+      .map(issue => {
+        const linhas = issue.body.split('\n').map(l => l.trim());
 
-      const getCampo = (campo) => {
-        const linha = linhas.find(l => l.startsWith(`**${campo}:**`));
-        return linha ? linha.split('**')[2].replace(':', '').trim().replace(/^"|"$/g, '') : null;
-      };
+        const getCampo = (campo) => {
+          const linha = linhas.find(l => l.toLowerCase().startsWith(`${campo.toLowerCase()}:`));
+          return linha ? linha.split(':').slice(1).join(':').trim().replace(/^"|"$/g, '') : null;
+        };
 
-      return {
-        id: issue.number,
-        titulo: getCampo('Titulo') || issue.title,
-        nomeArtista: getCampo('Artista'),
-        imagem: getCampo('Imagem'),
-        url: issue.html_url,
-      };
-    }).filter(obra => obra.titulo && obra.nomeArtista && obra.imagem);
+        const titulo = getCampo('Titulo') || issue.title;
+        const nomeArtista = getCampo('Artista');
+        const imagem = getCampo('Imagem');
+
+        return {
+          id: issue.number,
+          titulo,
+          nomeArtista,
+          imagem,
+          url: issue.html_url
+        };
+      })
+      .filter(o => o.titulo && o.nomeArtista && o.imagem);
 
     return res.status(200).json({ total: pendentes.length, pendentes });
+
   } catch (erro) {
     console.error('[ERRO] A obter submissões:', erro);
     return res.status(500).json({ message: 'Erro ao obter submissões' });
