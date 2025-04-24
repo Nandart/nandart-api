@@ -33,9 +33,9 @@ export default async function handler(req, res) {
       .map(issue => {
         const linhas = issue.body.split('\n').map(l => l.trim());
 
-        const getCampo = (chave) => {
-          const linha = linhas.find(l => l.toLowerCase().startsWith(`${chave.toLowerCase()}:`));
-          return linha ? linha.split(':').slice(1).join(':').trim().replace(/^"|"$/g, '') : null;
+        const getCampo = (campo) => {
+          const linha = linhas.find(l => l.toLowerCase().startsWith(`${campo.toLowerCase()}:`));
+          return linha ? linha.split(':').slice(1).join(':').trim() : null;
         };
 
         return {
