@@ -29,30 +29,25 @@ export default async function handler(req, res) {
     });
 
     const pendentes = issues
+      .filter(issue => issue.title && issue.body)
       .map(issue => {
         const linhas = issue.body.split('\n').map(l => l.trim());
-
-        const getCampo = (campo) => {
-          const linha = linhas.find(l => l.toLowerCase().startsWith(`${campo.toLowerCase()}:`));
-          return linha ? linha.split(':').slice(1).join(':').trim().replace(/^"|"$/g, '') : null;
+        const getCampo = (chave) => {
+          const linha = linhas.find(l => l.toLowerCase().startsWith(`${chave.toLowerCase()}:`));
+          return linha ? linha.split(':').slice(1).join(':').trim() : null;
         };
-
-        const titulo = getCampo('Titulo') || issue.title;
-        const nomeArtista = getCampo('Artista');
-        const imagem = getCampo('Imagem');
 
         return {
           id: issue.number,
-          titulo,
-          nomeArtista,
-          imagem,
+          titulo: getCampo('Titulo') || issue.title,
+          nomeArtista: getCampo('Artista'),
+          imagem: getCampo('Imagem'),
           url: issue.html_url
         };
       })
       .filter(o => o.titulo && o.nomeArtista && o.imagem);
 
     return res.status(200).json({ total: pendentes.length, pendentes });
-
   } catch (erro) {
     console.error('[ERRO] A obter submissões:', erro);
     return res.status(500).json({ message: 'Erro ao obter submissões' });
