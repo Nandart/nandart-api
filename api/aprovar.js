@@ -25,7 +25,6 @@ export default async function handler(req, res) {
   const { id, titulo, nomeArtista, imagem } = req.body;
 
   if (!id || !titulo || !nomeArtista || !imagem) {
-    console.error('[ERRO] Dados em falta:', { id, titulo, nomeArtista, imagem });
     return res.status(400).json({ message: 'Dados em falta na submissão' });
   }
 
@@ -44,7 +43,6 @@ slug: "${slug}"
 
     const contentEncoded = Buffer.from(conteudo).toString('base64');
 
-    console.log(`[INFO] A obter SHA base do branch "${BRANCH_DESTINO}"...`);
     const { data: refData } = await octokit.rest.git.getRef({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
@@ -54,7 +52,6 @@ slug: "${slug}"
     const shaBase = refData.object.sha;
     const branchName = `aprovacao-${id}-${Date.now()}`;
 
-    console.log(`[INFO] A criar novo branch: ${branchName}...`);
     await octokit.rest.git.createRef({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
@@ -62,7 +59,6 @@ slug: "${slug}"
       sha: shaBase
     });
 
-    console.log(`[INFO] A criar ficheiro: ${filePath}...`);
     await octokit.rest.repos.createOrUpdateFileContents({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
@@ -72,7 +68,6 @@ slug: "${slug}"
       branch: branchName
     });
 
-    console.log(`[INFO] A criar Pull Request...`);
     await octokit.rest.pulls.create({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
@@ -82,7 +77,6 @@ slug: "${slug}"
       body: `Esta obra foi aprovada no painel e está pronta para ser integrada na galeria.`
     });
 
-    console.log(`[INFO] A atualizar issue #${id} como aprovada...`);
     await octokit.rest.issues.update({
       owner: REPO_OWNER,
       repo: REPO_NAME,
@@ -91,7 +85,6 @@ slug: "${slug}"
     });
 
     return res.status(200).json({ message: 'Pull Request criado com sucesso!' });
-
   } catch (erro) {
     console.error('[ERRO] Ao criar Pull Request:', erro);
     return res.status(500).json({ message: 'Erro ao criar Pull Request. Verifique o log.' });
