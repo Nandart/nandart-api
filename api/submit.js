@@ -10,14 +10,14 @@ export const config = {
   },
 };
 
-// Configuração Cloudinary
+// 🌩️ Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// GitHub
+// 🐙 GitHub
 const octokit = new Octokit({
   auth: process.env.GITHUB_TOKEN,
 });
@@ -79,23 +79,22 @@ export default async function handler(req, res) {
 
       const imageUrl = uploadResponse.secure_url;
 
+      // 📄 Corpo padronizado da issue (sem emojis, com prefixos esperados pelo submissoes.js)
       const issueTitle = `Nova Submissao: "${titulo}" por ${nomeArtista}`;
       const issueBody = `
-## Submissao de Obra para Avaliacao
+Titulo: ${titulo}
+Artista: ${nomeArtista}
+Ano: ${ano}
+Estilo: ${estilo}
+Tecnica: ${tecnica}
+Dimensoes: ${dimensoes}
+Materiais: ${materiais}
+Local: ${local}
 
-Titulo: ${titulo}  
-Artista: ${nomeArtista}  
-Ano: ${ano}  
-Estilo: ${estilo}  
-Tecnica: ${tecnica}  
-Dimensoes: ${dimensoes}  
-Materiais: ${materiais}  
-Local: ${local}  
-
-Descricao:  
+Descricao:
 ${descricao}
 
-Carteira: ${enderecowallet}  
+Carteira: ${enderecowallet}
 Imagem: ${imageUrl}
       `.trim();
 
