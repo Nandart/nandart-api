@@ -8,8 +8,8 @@ const octokit = new Octokit({
 });
 
 const REPO_OWNER = 'Nandart';
-const REPO_NAME = 'nandart-submissoes';
-const REPO_PUBLIC = 'nandart-galeria';
+const REPO_NAME = 'nandart-submissoes'; // Repositório de issues
+const REPO_PUBLIC = 'nandart-galeria';  // Repositório de obras
 const BRANCH_DESTINO = 'main';
 
 export default async function handler(req, res) {
@@ -32,17 +32,16 @@ export default async function handler(req, res) {
     const slug = slugify(`${nomeArtista}-${titulo}`, { lower: true, strict: true });
     const filePath = `galeria/obras/${slug}.md`;
 
-    const conteudo = `
----
+    const conteudo = `---
 titulo: "${titulo}"
 artista: "${nomeArtista}"
 imagem: "${imagem}"
 slug: "${slug}"
----
-    `.trim();
+---`.trim();
 
     const contentEncoded = Buffer.from(conteudo).toString('base64');
 
+    console.log('[INFO] A obter SHA da branch base...');
     const { data: refData } = await octokit.rest.git.getRef({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
@@ -52,6 +51,7 @@ slug: "${slug}"
     const shaBase = refData.object.sha;
     const branchName = `aprovacao-${id}-${Date.now()}`;
 
+    console.log('[INFO] A criar nova branch:', branchName);
     await octokit.rest.git.createRef({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
@@ -59,6 +59,7 @@ slug: "${slug}"
       sha: shaBase
     });
 
+    console.log('[INFO] A adicionar ficheiro à nova branch...');
     await octokit.rest.repos.createOrUpdateFileContents({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
@@ -68,6 +69,7 @@ slug: "${slug}"
       branch: branchName
     });
 
+    console.log('[INFO] A criar Pull Request...');
     await octokit.rest.pulls.create({
       owner: REPO_OWNER,
       repo: REPO_PUBLIC,
@@ -77,6 +79,7 @@ slug: "${slug}"
       body: `Esta obra foi aprovada no painel e está pronta para ser integrada na galeria.`
     });
 
+    console.log('[INFO] A atualizar a issue original...');
     await octokit.rest.issues.update({
       owner: REPO_OWNER,
       repo: REPO_NAME,
@@ -84,9 +87,11 @@ slug: "${slug}"
       labels: ['aprovada', 'obra']
     });
 
+    console.log('[SUCESSO] Pull Request criado com sucesso.');
     return res.status(200).json({ message: 'Pull Request criado com sucesso!' });
+
   } catch (erro) {
-    console.error('[ERRO] Ao criar Pull Request:', erro);
-    return res.status(500).json({ message: 'Erro ao criar Pull Request. Verifique o log.' });
+    console.error('[ERRO DETALHADO]', erro);
+    return res.status(500).json({ message: 'Erro ao criar Pull Request', detalhes: erro.message });
   }
 }
